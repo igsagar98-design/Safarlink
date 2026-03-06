@@ -1,0 +1,162 @@
+import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { calculateTripStatus } from '@/lib/risk-logic';
+import CreateTripDialog from '@/components/CreateTripDialog';
+import TripCard from '@/components/TripCard';
+import TripDetail from '@/components/TripDetail';
+import type { Trip } from '@/components/TripCard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Truck, CheckCircle, AlertTriangle, XCircle, LogOut, Search } from 'lucide-react';
+
+export default function Dashboard() {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (!authLoading && !user) navigate('/login');
+  }, [user, authLoading, navigate]);
+
+  const fetchTrips = async () => {
+    if (!user) return;
+    setLoading(true);
+    const { data } = await supabase
+      .from('trips')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    setTrips((data as Trip[]) || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (user) fetchTrips();
+  }, [user]);
+
+  const stats = useMemo(() => {
+    const active = trips.filter(t => t.status !== 'delivered');
+    let onTime = 0, atRisk = 0, late = 0;
+    active.forEach(t => {
+      const s = calculateTripStatus(t);
+      if (s === 'on_time') onTime++;
+      else if (s === 'at_risk') atRisk++;
+      else if (s === 'late') late++;
+    });
+    return { active: active.length, onTime, atRisk, late };
+  }, [trips]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return trips;
+    const q = search.toLowerCase();
+    return trips.filter(t =>
+      t.vehicle_number.toLowerCase().includes(q) ||
+      t.material.toLowerCase().includes(q) ||
+      t.transporter_name.toLowerCase().includes(q) ||
+      t.customer_name.toLowerCase().includes(q) ||
+      t.origin.toLowerCase().includes(q) ||
+      t.destination.toLowerCase().includes(q)
+    );
+  }, [trips, search]);
+
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
+  }
+
+  const statCards = [
+    { label: 'Active Trips', value: stats.active, icon: Truck, color: 'text-primary' },
+    { label: 'On Time', value: stats.onTime, icon: CheckCircle, color: 'text-success' },
+    { label: 'At Risk', value: stats.atRisk, icon: AlertTriangle, color: 'text-warning' },
+    { label: 'Late', value: stats.late, icon: XCircle, color: 'text-danger' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-card border-b">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <Truck className="w-4 h-4 text-primary-foreground" />
+            </div>
+            <span className="font-display font-bold text-sm">TrackFlow Lite</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CreateTripDialog onCreated={fetchTrips} />
+            <Button variant="ghost" size="icon" onClick={signOut}>
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {statCards.map(s => (
+            <div key={s.label} className="card-elevated p-4">
+              <div className="flex items-center gap-2">
+                <s.icon className={`w-5 h-5 ${s.color}`} />
+                <span className="text-xs text-muted-foreground">{s.label}</span>
+              </div>
+              <p className="font-display font-bold text-2xl mt-1">{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Search by vehicle, material, customer, location…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Content */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-3">
+            {loading ? (
+              <p className="text-muted-foreground text-sm text-center py-8">Loading trips…</p>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-12">
+                <Truck className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground text-sm">No trips yet. Create your first trip!</p>
+              </div>
+            ) : (
+              filtered.map(trip => (
+                <TripCard key={trip.id} trip={trip} onSelect={setSelectedTrip} />
+              ))
+            )}
+          </div>
+
+          <div className="hidden md:block">
+            {selectedTrip ? (
+              <div className="sticky top-20">
+                <TripDetail trip={selectedTrip} onClose={() => setSelectedTrip(null)} />
+              </div>
+            ) : (
+              <div className="card-elevated p-8 text-center">
+                <p className="text-muted-foreground text-sm">Select a trip to view details</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile detail overlay */}
+        {selectedTrip && (
+          <div className="md:hidden fixed inset-0 z-50 bg-background/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <TripDetail trip={selectedTrip} onClose={() => setSelectedTrip(null)} />
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
