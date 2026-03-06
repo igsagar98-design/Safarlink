@@ -14,7 +14,148 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      trip_location_updates: {
+        Row: {
+          id: string
+          latitude: number
+          location_name: string | null
+          longitude: number
+          recorded_at: string
+          trip_id: string
+        }
+        Insert: {
+          id?: string
+          latitude: number
+          location_name?: string | null
+          longitude: number
+          recorded_at?: string
+          trip_id: string
+        }
+        Update: {
+          id?: string
+          latitude?: number
+          location_name?: string | null
+          longitude?: number
+          recorded_at?: string
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_location_updates_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trip_status_updates: {
+        Row: {
+          id: string
+          note: string | null
+          recorded_at: string
+          status: Database["public"]["Enums"]["trip_status"]
+          trip_id: string
+        }
+        Insert: {
+          id?: string
+          note?: string | null
+          recorded_at?: string
+          status: Database["public"]["Enums"]["trip_status"]
+          trip_id: string
+        }
+        Update: {
+          id?: string
+          note?: string | null
+          recorded_at?: string
+          status?: Database["public"]["Enums"]["trip_status"]
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_status_updates_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trips: {
+        Row: {
+          created_at: string
+          current_eta: string | null
+          customer_name: string
+          customer_tracking_token: string
+          destination: string
+          driver_name: string
+          driver_phone: string
+          id: string
+          is_active: boolean
+          last_latitude: number | null
+          last_location_name: string | null
+          last_longitude: number | null
+          last_update_at: string | null
+          material: string
+          origin: string
+          planned_arrival: string
+          status: Database["public"]["Enums"]["trip_status"]
+          tracking_token: string
+          transporter_name: string
+          updated_at: string
+          user_id: string
+          vehicle_number: string
+        }
+        Insert: {
+          created_at?: string
+          current_eta?: string | null
+          customer_name: string
+          customer_tracking_token?: string
+          destination: string
+          driver_name: string
+          driver_phone: string
+          id?: string
+          is_active?: boolean
+          last_latitude?: number | null
+          last_location_name?: string | null
+          last_longitude?: number | null
+          last_update_at?: string | null
+          material: string
+          origin: string
+          planned_arrival: string
+          status?: Database["public"]["Enums"]["trip_status"]
+          tracking_token?: string
+          transporter_name: string
+          updated_at?: string
+          user_id: string
+          vehicle_number: string
+        }
+        Update: {
+          created_at?: string
+          current_eta?: string | null
+          customer_name?: string
+          customer_tracking_token?: string
+          destination?: string
+          driver_name?: string
+          driver_phone?: string
+          id?: string
+          is_active?: boolean
+          last_latitude?: number | null
+          last_location_name?: string | null
+          last_longitude?: number | null
+          last_update_at?: string | null
+          material?: string
+          origin?: string
+          planned_arrival?: string
+          status?: Database["public"]["Enums"]["trip_status"]
+          tracking_token?: string
+          transporter_name?: string
+          updated_at?: string
+          user_id?: string
+          vehicle_number?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +164,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      trip_status: "on_time" | "at_risk" | "late" | "delivered"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +291,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      trip_status: ["on_time", "at_risk", "late", "delivered"],
+    },
   },
 } as const
