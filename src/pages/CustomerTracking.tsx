@@ -1,0 +1,117 @@
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
+import { format } from 'date-fns';
+import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+
+export default function CustomerTracking() {
+  const { token } = useParams<{ token: string }>();
+  const [trip, setTrip] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchTrip = async () => {
+    if (!token) return;
+    const { data, error: err } = await supabase
+      .from('trips')
+      .select('*')
+      .eq('customer_tracking_token', token)
+      .maybeSingle();
+    if (err || !data) {
+      setError('Tracking link not found.');
+    } else {
+      setTrip(data);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchTrip();
+    // Auto-refresh every 60 seconds
+    const interval = setInterval(fetchTrip, 60000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
+  }
+
+  if (error || !trip) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center">
+          <AlertTriangle className="w-10 h-10 text-warning mx-auto mb-2" />
+          <p className="text-foreground font-medium">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const status = calculateTripStatus(trip);
+
+  // Simple progress calculation based on time elapsed vs total time
+  const created = new Date(trip.created_at).getTime();
+  const planned = new Date(trip.planned_arrival).getTime();
+  const now = Date.now();
+  const totalDuration = planned - created;
+  const elapsed = now - created;
+  const progress = Math.min(Math.max(Math.round((elapsed / totalDuration) * 100), 0), 100);
+
+  const rows = [
+    { icon: Truck, label: 'Vehicle', value: trip.vehicle_number },
+    { icon: Package, label: 'Material', value: trip.material },
+    { icon: Building, label: 'Transporter', value: trip.transporter_name },
+    { icon: MapPin, label: 'Origin', value: trip.origin },
+    { icon: Navigation, label: 'Destination', value: trip.destination },
+    { icon: Clock, label: 'Planned Arrival', value: format(new Date(trip.planned_arrival), 'dd MMM yyyy, HH:mm') },
+    { icon: Clock, label: 'Current ETA', value: trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : 'Same as planned' },
+    { icon: MapPin, label: 'Last Location', value: trip.last_location_name || 'Awaiting update' },
+    { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background px-4 py-6">
+      <div className="max-w-md mx-auto space-y-4">
+        {/* Header */}
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-primary mb-2">
+            <Truck className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <h1 className="font-display font-bold text-lg">Shipment Tracking</h1>
+          <p className="text-xs text-muted-foreground">Real-time visibility</p>
+        </div>
+
+        {/* Status banner */}
+        <div className={`rounded-xl p-4 text-center ${getStatusClass(status)}`}>
+          <p className="text-sm font-medium">Current Status</p>
+          <p className="text-2xl font-display font-bold">{getStatusLabel(status)}</p>
+        </div>
+
+        {/* Progress */}
+        <div className="card-elevated p-4 space-y-2">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{trip.origin}</span>
+            <span>{trip.destination}</span>
+          </div>
+          <Progress value={progress} className="h-2" />
+          <p className="text-xs text-center text-muted-foreground">{progress}% route progress (estimated)</p>
+        </div>
+
+        {/* Details */}
+        <div className="card-elevated p-4 space-y-3">
+          {rows.map(r => (
+            <div key={r.label} className="flex items-center gap-2 text-sm">
+              <r.icon className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground w-28 shrink-0">{r.label}</span>
+              <span className="font-medium">{r.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-center text-muted-foreground">Auto-refreshes every 60 seconds</p>
+      </div>
+    </div>
+  );
+}
