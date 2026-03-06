@@ -6,6 +6,7 @@ interface Trip {
   id: string;
   vehicle_number: string;
   driver_name: string;
+  driver_phone: string;
   transporter_name: string;
   customer_name: string;
   origin: string;
