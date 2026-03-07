@@ -1,25 +1,7 @@
 import { getStatusLabel, getStatusClass, timeAgo, calculateTripStatus } from '@/lib/risk-logic';
 import { MapPin, Clock, Truck, Package } from 'lucide-react';
 import { format } from 'date-fns';
-
-interface Trip {
-  id: string;
-  vehicle_number: string;
-  driver_name: string;
-  driver_phone: string;
-  transporter_name: string;
-  customer_name: string;
-  origin: string;
-  destination: string;
-  material: string;
-  planned_arrival: string;
-  current_eta: string | null;
-  last_location_name: string | null;
-  last_update_at: string | null;
-  status: 'on_time' | 'at_risk' | 'late' | 'delivered';
-  tracking_token: string;
-  customer_tracking_token: string;
-}
+import type { Trip } from '@/lib/api';
 
 interface Props {
   trip: Trip;

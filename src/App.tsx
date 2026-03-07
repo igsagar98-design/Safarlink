@@ -7,6 +7,9 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
+import CompanyDashboard from "./pages/CompanyDashboard";
+import Profile from "./pages/Profile";
+import CompanyProfile from "./pages/CompanyProfile";
 import DriverTracking from "./pages/DriverTracking";
 import CustomerTracking from "./pages/CustomerTracking";
 import NotFound from "./pages/NotFound";
@@ -24,6 +27,9 @@ const App = () => (
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/company-dashboard" element={<CompanyDashboard />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/company-profile" element={<CompanyProfile />} />
           <Route path="/driver/:token" element={<DriverTracking />} />
           <Route path="/track/:token" element={<CustomerTracking />} />
           <Route path="*" element={<NotFound />} />

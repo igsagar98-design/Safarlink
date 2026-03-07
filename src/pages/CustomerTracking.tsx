@@ -1,30 +1,68 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  getCustomerTripByToken,
+  getRouteProgress,
+  listTripEvents,
+  type RouteProgressResult,
+  type TripEvent,
+  type Trip,
+} from '@/lib/api';
 import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import TripTimeline from '@/components/TripTimeline';
 
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
-  const [trip, setTrip] = useState<any>(null);
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
+  const [events, setEvents] = useState<TripEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
+
   const fetchTrip = async () => {
     if (!token) return;
-    const { data, error: err } = await supabase
-      .from('trips')
-      .select('*')
-      .eq('customer_tracking_token', token)
-      .maybeSingle();
-    if (err || !data) {
-      setError('Tracking link not found.');
-    } else {
+    try {
+      const data = await getCustomerTripByToken(token);
+      if (!data) {
+        setError('Tracking link not found.');
+        setTrip(null);
+        return;
+      }
+
+      setError('');
       setTrip(data);
+
+      try {
+        const tripEvents = await listTripEvents(data.id);
+        setEvents(tripEvents);
+      } catch {
+        setEvents([]);
+      }
+
+      try {
+        const progress = await getRouteProgress({
+          origin: data.origin,
+          destination: data.destination,
+          currentLatitude: data.last_latitude,
+          currentLongitude: data.last_longitude,
+        });
+        setRouteProgress(progress);
+      } catch {
+        setRouteProgress(null);
+      }
+    } catch {
+      setError('Tracking link not found.');
+      setTrip(null);
+      setRouteProgress(null);
+      setEvents([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -51,14 +89,6 @@ export default function CustomerTracking() {
 
   const status = calculateTripStatus(trip);
 
-  // Simple progress calculation based on time elapsed vs total time
-  const created = new Date(trip.created_at).getTime();
-  const planned = new Date(trip.planned_arrival).getTime();
-  const now = Date.now();
-  const totalDuration = planned - created;
-  const elapsed = now - created;
-  const progress = Math.min(Math.max(Math.round((elapsed / totalDuration) * 100), 0), 100);
-
   const rows = [
     { icon: Truck, label: 'Vehicle', value: trip.vehicle_number },
     { icon: Package, label: 'Material', value: trip.material },
@@ -66,7 +96,21 @@ export default function CustomerTracking() {
     { icon: MapPin, label: 'Origin', value: trip.origin },
     { icon: Navigation, label: 'Destination', value: trip.destination },
     { icon: Clock, label: 'Planned Arrival', value: format(new Date(trip.planned_arrival), 'dd MMM yyyy, HH:mm') },
-    { icon: Clock, label: 'Current ETA', value: trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : 'Same as planned' },
+    {
+      icon: Clock,
+      label: 'Predicted ETA',
+      value: trip.predicted_arrival
+        ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm')
+        : (trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : 'Same as planned'),
+    },
+    {
+      icon: AlertTriangle,
+      label: 'Delay',
+      value:
+        typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
+          ? `${trip.delay_minutes} min delayed`
+          : 'No delay predicted',
+    },
     { icon: MapPin, label: 'Last Location', value: trip.last_location_name || 'Awaiting update' },
     { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
   ];
@@ -89,14 +133,32 @@ export default function CustomerTracking() {
           <p className="text-2xl font-display font-bold">{getStatusLabel(status)}</p>
         </div>
 
+        {typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0 && (
+          <div className="card-elevated p-3 border-warning/40 bg-warning/10">
+            <p className="text-xs font-medium text-warning">
+              Delay warning: predicted arrival is {trip.delay_minutes} minutes later than planned.
+            </p>
+          </div>
+        )}
+
         {/* Progress */}
         <div className="card-elevated p-4 space-y-2">
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{trip.origin}</span>
             <span>{trip.destination}</span>
           </div>
-          <Progress value={progress} className="h-2" />
-          <p className="text-xs text-center text-muted-foreground">{progress}% route progress (estimated)</p>
+          <Progress value={routeProgress?.progressPercent ?? 0} className="h-2" />
+          <p className="text-xs text-center text-muted-foreground">
+            {routeProgress
+              ? `${routeProgress.progressPercent}% route progress`
+              : 'Route progress unavailable'}
+          </p>
+          {routeProgress && (
+            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-1">
+              <p>Total distance: {formatKm(routeProgress.totalDistanceMeters)}</p>
+              <p>Remaining: {formatKm(routeProgress.remainingDistanceMeters)}</p>
+            </div>
+          )}
         </div>
 
         {/* Details */}
@@ -108,6 +170,11 @@ export default function CustomerTracking() {
               <span className="font-medium">{r.value}</span>
             </div>
           ))}
+        </div>
+
+        <div className="card-elevated p-4 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Trip Timeline</p>
+          <TripTimeline events={events} />
         </div>
 
         <p className="text-xs text-center text-muted-foreground">Auto-refreshes every 60 seconds</p>

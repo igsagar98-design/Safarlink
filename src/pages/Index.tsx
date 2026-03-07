@@ -3,14 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function Index() {
-  const { user, loading } = useAuth();
+  const { user, accountType, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!loading) {
-      navigate(user ? '/dashboard' : '/login');
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      navigate(accountType === 'company' ? '/company-dashboard' : '/dashboard');
     }
-  }, [user, loading, navigate]);
+  }, [user, accountType, loading, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

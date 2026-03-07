@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { getMyProfile, getSession, signIn } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,12 +16,20 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const error = await signIn(email, password);
     setLoading(false);
     if (error) {
       toast.error(error.message);
     } else {
-      navigate('/dashboard');
+      try {
+        const profile = await getMyProfile();
+        const role = profile?.role || profile?.account_type;
+        navigate(role === 'company' ? '/company-dashboard' : '/dashboard');
+      } catch {
+        const session = await getSession();
+        const fallbackType = session?.user?.user_metadata?.role || session?.user?.user_metadata?.account_type;
+        navigate(fallbackType === 'company' ? '/company-dashboard' : '/dashboard');
+      }
     }
   };
 
@@ -32,7 +40,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary mb-4">
             <Truck className="w-6 h-6 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-foreground">TrackFlow Lite</h1>
+          <h1 className="text-2xl font-display font-bold text-foreground">Safarlink</h1>
           <p className="text-muted-foreground mt-1 text-sm">Shipment visibility for small transporters</p>
         </div>
 

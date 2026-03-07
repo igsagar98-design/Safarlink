@@ -1,33 +1,74 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+import {
+  getMyProfile,
+  getSession,
+  onAuthStateChange,
+  signOut,
+  type AccountType,
+  type Profile,
+  type Session,
+  type User,
+} from '@/lib/api';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+  const inferAccountTypeFromUser = (nextUser: User | null): AccountType | null => {
+    if (!nextUser) return null;
+    const metaType = nextUser.user_metadata?.role || nextUser.user_metadata?.account_type;
+    return metaType === 'company' ? 'company' : 'transporter';
+  };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+  useEffect(() => {
+    const syncProfile = async (nextUser: User | null) => {
+      if (!nextUser) {
+        setProfile(null);
+        setAccountType(null);
+        return;
+      }
+
+      const inferredFromMeta = inferAccountTypeFromUser(nextUser);
+
+      try {
+        const nextProfile = await getMyProfile();
+        setProfile(nextProfile);
+        setAccountType((nextProfile?.role as AccountType | null) ?? (nextProfile?.account_type as AccountType | null) ?? inferredFromMeta);
+      } catch {
+        setProfile(null);
+        setAccountType(inferredFromMeta);
+      }
+    };
+
+    const subscription = onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      const nextUser = nextSession?.user ?? null;
+      setUser(nextUser);
+      syncProfile(nextUser).finally(() => {
+        setLoading(false);
+      });
     });
+
+    getSession()
+      .then(async (nextSession) => {
+        setSession(nextSession);
+        const nextUser = nextSession?.user ?? null;
+        setUser(nextUser);
+        await syncProfile(nextUser);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const handleSignOut = async () => {
+    await signOut();
   };
 
-  return { user, session, loading, signOut };
+  return { user, session, profile, accountType, loading, signOut: handleSignOut };
 }

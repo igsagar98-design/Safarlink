@@ -14,6 +14,147 @@ export type Database = {
   }
   public: {
     Tables: {
+      companies: {
+        Row: {
+          company_code: string | null
+          company_name: string
+          company_type: string
+          created_at: string
+          id: string
+          name: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_code?: string | null
+          company_name: string
+          company_type?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_code?: string | null
+          company_name?: string
+          company_type?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      company_users: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_users_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          account_type: string
+          company_id: string | null
+          created_at: string
+          display_name: string
+          full_name: string
+          id: string
+          phone: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          account_type?: string
+          company_id?: string | null
+          created_at?: string
+          display_name?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          role?: string
+          user_id: string
+        }
+        Update: {
+          account_type?: string
+          company_id?: string | null
+          created_at?: string
+          display_name?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trip_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          note: string | null
+          trip_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          note?: string | null
+          trip_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          note?: string | null
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_events_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trip_location_updates: {
         Row: {
           id: string
@@ -83,6 +224,7 @@ export type Database = {
       }
       trips: {
         Row: {
+          company_id: string | null
           created_at: string
           current_eta: string | null
           customer_name: string
@@ -98,15 +240,19 @@ export type Database = {
           last_update_at: string | null
           material: string
           origin: string
+          predicted_arrival: string | null
           planned_arrival: string
+          delay_minutes: number | null
           status: Database["public"]["Enums"]["trip_status"]
           tracking_token: string
+          transporter_company_id: string | null
           transporter_name: string
           updated_at: string
           user_id: string
           vehicle_number: string
         }
         Insert: {
+          company_id?: string | null
           created_at?: string
           current_eta?: string | null
           customer_name: string
@@ -122,15 +268,19 @@ export type Database = {
           last_update_at?: string | null
           material: string
           origin: string
+          predicted_arrival?: string | null
           planned_arrival: string
+          delay_minutes?: number | null
           status?: Database["public"]["Enums"]["trip_status"]
           tracking_token?: string
+          transporter_company_id?: string | null
           transporter_name: string
           updated_at?: string
           user_id: string
           vehicle_number: string
         }
         Update: {
+          company_id?: string | null
           created_at?: string
           current_eta?: string | null
           customer_name?: string
@@ -146,15 +296,33 @@ export type Database = {
           last_update_at?: string | null
           material?: string
           origin?: string
+          predicted_arrival?: string | null
           planned_arrival?: string
+          delay_minutes?: number | null
           status?: Database["public"]["Enums"]["trip_status"]
           tracking_token?: string
+          transporter_company_id?: string | null
           transporter_name?: string
           updated_at?: string
           user_id?: string
           vehicle_number?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "trips_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_transporter_company_id_fkey"
+            columns: ["transporter_company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

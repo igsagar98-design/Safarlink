@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useEffect, useMemo, useState } from 'react';
+import { createCompany, createTrip, createTrips, listCompanies, type Company, type Trip } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -11,17 +12,32 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 
 interface Props {
-  onCreated: () => void;
+  onCreated: (trip: Trip) => void | Promise<void>;
 }
 
 export default function CreateTripDialog({ onCreated }: Props) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<'single' | 'bulk'>('single');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyQuery, setCompanyQuery] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const [companyFeatureUnavailable, setCompanyFeatureUnavailable] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [creatingCompany, setCreatingCompany] = useState(false);
+  const [bulkInput, setBulkInput] = useState('');
   const [form, setForm] = useState({
     vehicle_number: '',
     driver_name: '',
@@ -36,22 +52,216 @@ export default function CreateTripDialog({ onCreated }: Props) {
 
   const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
+  const normalizeCompanyText = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const getErrorMessage = (error: unknown) => {
+    if (error instanceof Error) return error.message;
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    return 'Failed to create trip';
+  };
+
+  const loadCompanies = async () => {
+    try {
+      const data = await listCompanies('shipper');
+      setCompanyFeatureUnavailable(false);
+      setCompanies(data);
+      setSelectedCompanyId((current) => current || data[0]?.id || '');
+    } catch (error) {
+      const message = getErrorMessage(error).toLowerCase();
+      if (message.includes('public.companies') && message.includes('schema cache')) {
+        setCompanyFeatureUnavailable(true);
+      }
+      setCompanies([]);
+      setSelectedCompanyId('');
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    void loadCompanies();
+  }, [open]);
+
+  const filteredCompanies = useMemo(() => {
+    const q = companyQuery.trim().toLowerCase();
+    if (!q) return companies;
+
+    return companies.filter((company) => {
+      const byName = company.company_name.toLowerCase().includes(q);
+      const byCode = (company.company_code || '').toLowerCase().includes(q);
+      return byName || byCode;
+    });
+  }, [companies, companyQuery]);
+
+  const exactExistingCompany = useMemo(() => {
+    const normalized = normalizeCompanyText(newCompanyName);
+    if (!normalized) return null;
+
+    return (
+      companies.find((company) => normalizeCompanyText(company.company_name) === normalized)
+      || null
+    );
+  }, [companies, newCompanyName]);
+
+  const similarCompanies = useMemo(() => {
+    const normalized = normalizeCompanyText(newCompanyName);
+    if (!normalized || exactExistingCompany) return [];
+
+    return companies
+      .filter((company) => {
+        const companyText = normalizeCompanyText(company.company_name);
+        return companyText.includes(normalized) || normalized.includes(companyText);
+      })
+      .slice(0, 4);
+  }, [companies, newCompanyName, exactExistingCompany]);
+
+  const handleCreateCompany = async () => {
+    if (!newCompanyName.trim()) {
+      toast.error('Enter a company name');
+      return;
+    }
+
+    if (exactExistingCompany) {
+      setSelectedCompanyId(exactExistingCompany.id);
+      setNewCompanyName('');
+      toast.info(`Using existing company: ${exactExistingCompany.company_name}`);
+      return;
+    }
+
+    setCreatingCompany(true);
+    try {
+      const created = await createCompany(newCompanyName.trim(), 'shipper');
+      await loadCompanies();
+      setSelectedCompanyId(created.id);
+      setNewCompanyName('');
+      toast.success('Company created');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create company';
+      toast.error(message);
+    } finally {
+      setCreatingCompany(false);
+    }
+  };
+
+  const parseBulkLines = (raw: string, userId: string, companyId: string) => {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      throw new Error('Bulk input is empty. Add at least one shipment line.');
+    }
+
+    return lines.map((line, index) => {
+      const parts = line.split('|').map((part) => part.trim());
+      if (parts.length !== 9) {
+        throw new Error(
+          `Line ${index + 1} must contain 9 values separated by | (vehicle, driver, phone, transporter, customer, origin, destination, material, planned_arrival).`
+        );
+      }
+
+      const emptyFieldIndex = parts.findIndex((part) => part.length === 0);
+      if (emptyFieldIndex !== -1) {
+        const fieldNames = [
+          'vehicle_number',
+          'driver_name',
+          'driver_phone',
+          'transporter_name',
+          'customer_name',
+          'origin',
+          'destination',
+          'material',
+          'planned_arrival',
+        ];
+        throw new Error(`Line ${index + 1} has empty ${fieldNames[emptyFieldIndex]}.`);
+      }
+
+      const plannedArrivalDate = new Date(parts[8]);
+      if (Number.isNaN(plannedArrivalDate.getTime())) {
+        throw new Error(`Line ${index + 1} has invalid planned_arrival. Use format YYYY-MM-DDTHH:mm.`);
+      }
+      const plannedArrivalIso = plannedArrivalDate.toISOString();
+
+      const selectedCompany = companies.find((c) => c.id === companyId);
+
+      return {
+        user_id: userId,
+        transporter_company_id: profile?.company_id ?? null,
+        company_id: companyId,
+        vehicle_number: parts[0],
+        driver_name: parts[1],
+        driver_phone: parts[2],
+        transporter_name: parts[3],
+        customer_name: selectedCompany?.company_name || parts[4],
+        origin: parts[5],
+        destination: parts[6],
+        material: parts[7],
+        planned_arrival: plannedArrivalIso,
+      };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    if (!profile?.company_id) {
+      toast.error('Set your transporter company in Profile before creating trips.');
+      return;
+    }
+
     setLoading(true);
 
-    const { error } = await supabase.from('trips').insert({
-      user_id: user.id,
-      ...form,
-      planned_arrival: new Date(form.planned_arrival).toISOString(),
-    });
+    try {
+      let createdTrip: Trip | null = null;
+      let companyId = selectedCompanyId;
 
-    setLoading(false);
-    if (error) {
-      toast.error('Failed to create trip: ' + error.message);
-    } else {
-      toast.success('Trip created!');
+      // If user typed a company but forgot to click Add, create it automatically.
+      if (!companyId && newCompanyName.trim()) {
+        if (companyFeatureUnavailable) {
+          throw new Error('Company assignment is unavailable: table public.companies is missing. Run Supabase migrations to enable it.');
+        }
+        if (exactExistingCompany) {
+          companyId = exactExistingCompany.id;
+          setSelectedCompanyId(exactExistingCompany.id);
+        } else {
+          const createdCompany = await createCompany(newCompanyName.trim(), 'shipper');
+          companyId = createdCompany.id;
+          setSelectedCompanyId(createdCompany.id);
+        }
+        setNewCompanyName('');
+      }
+
+      if (!companyId) {
+        throw new Error('Select a shipper company (or add one) before creating the trip.');
+      }
+
+      if (mode === 'single') {
+        createdTrip = await createTrip({
+          user_id: user.id,
+          transporter_company_id: profile.company_id,
+          company_id: companyId,
+          ...form,
+          customer_name:
+            companies.find((company) => company.id === companyId)?.company_name
+            || form.customer_name,
+          planned_arrival: new Date(form.planned_arrival).toISOString(),
+        });
+      } else {
+        const payload = parseBulkLines(bulkInput, user.id, companyId);
+        const createdTrips = await createTrips(payload);
+        createdTrip = createdTrips[0] ?? null;
+      }
+
+      toast.success(mode === 'single' ? 'Trip created!' : 'Bulk shipments created!');
       setForm({
         vehicle_number: '',
         driver_name: '',
@@ -63,8 +273,17 @@ export default function CreateTripDialog({ onCreated }: Props) {
         material: '',
         planned_arrival: '',
       });
+      setBulkInput('');
       setOpen(false);
-      onCreated();
+      if (createdTrip) {
+        await onCreated(createdTrip);
+      }
+    } catch (error) {
+      console.error('Create trip submit error:', error);
+      const message = getErrorMessage(error);
+      toast.error('Failed to create trip: ' + message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -92,21 +311,138 @@ export default function CreateTripDialog({ onCreated }: Props) {
           <DialogTitle className="font-display">Create New Trip</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-3 mt-2">
-          {fields.map(f => (
-            <div key={f.key} className="space-y-1">
-              <Label htmlFor={f.key} className="text-xs">{f.label}</Label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={mode === 'single' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMode('single')}
+            >
+              Single
+            </Button>
+            <Button
+              type="button"
+              variant={mode === 'bulk' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMode('bulk')}
+            >
+              Bulk
+            </Button>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Company</Label>
+            <Input
+              value={companyQuery}
+              onChange={(e) => setCompanyQuery(e.target.value)}
+              placeholder="Search company by name/code"
+              disabled={companyFeatureUnavailable}
+            />
+            <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId} disabled={companyFeatureUnavailable}>
+              <SelectTrigger>
+                <SelectValue placeholder={companyFeatureUnavailable ? 'Company setup pending' : 'Assign shipper company'} />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredCompanies.length === 0 && (
+                  <SelectItem value="__no_companies__" disabled>
+                    No companies found
+                  </SelectItem>
+                )}
+                {filteredCompanies.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.company_name}{company.company_code ? ` (${company.company_code})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-2 pt-1">
               <Input
-                id={f.key}
-                type={f.type || 'text'}
-                value={(form as Record<string, string>)[f.key]}
-                onChange={e => set(f.key, e.target.value)}
-                placeholder={f.placeholder}
+                value={newCompanyName}
+                onChange={(e) => setNewCompanyName(e.target.value)}
+                placeholder={companyFeatureUnavailable ? 'Run migrations to enable company creation' : 'Add new company'}
+                disabled={companyFeatureUnavailable}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCreateCompany}
+                disabled={creatingCompany || companyFeatureUnavailable}
+              >
+                {creatingCompany ? 'Adding…' : 'Add'}
+              </Button>
+            </div>
+            {exactExistingCompany && (
+              <p className="text-[11px] text-muted-foreground">
+                Existing match found: <button type="button" className="underline" onClick={() => setSelectedCompanyId(exactExistingCompany.id)}>{exactExistingCompany.company_name}</button>
+              </p>
+            )}
+            {!exactExistingCompany && similarCompanies.length > 0 && (
+              <div className="text-[11px] text-muted-foreground space-y-1">
+                <p>Similar existing companies:</p>
+                <div className="flex flex-wrap gap-1">
+                  {similarCompanies.map((company) => (
+                    <Button
+                      key={company.id}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      onClick={() => {
+                        setSelectedCompanyId(company.id);
+                        setNewCompanyName('');
+                      }}
+                    >
+                      {company.company_name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {companyFeatureUnavailable && (
+              <p className="text-[11px] text-muted-foreground">
+                Company assignment is temporarily unavailable because `public.companies` is missing in the connected Supabase project.
+              </p>
+            )}
+          </div>
+
+          {mode === 'single' ? (
+            fields.map(f => (
+              <div key={f.key} className="space-y-1">
+                <Label htmlFor={f.key} className="text-xs">{f.label}</Label>
+                <Input
+                  id={f.key}
+                  type={f.type || 'text'}
+                  value={(form as Record<string, string>)[f.key]}
+                  onChange={e => set(f.key, e.target.value)}
+                  placeholder={f.placeholder}
+                  required
+                />
+              </div>
+            ))
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="bulk-input" className="text-xs">Bulk Shipments (one line per trip)</Label>
+              <Textarea
+                id="bulk-input"
+                value={bulkInput}
+                onChange={(e) => setBulkInput(e.target.value)}
+                placeholder="MH12AB1234|Rajesh Kumar|+919876543210|ABC Transport|Tata Steel|Mumbai|Pune|Tyres|2026-03-08T09:30"
+                className="min-h-36"
                 required
               />
+              <p className="text-[11px] text-muted-foreground">
+                Format: vehicle|driver|phone|transporter|customer|origin|destination|material|planned_arrival
+              </p>
             </div>
-          ))}
+          )}
+
           <Button type="submit" className="w-full mt-2" disabled={loading}>
-            {loading ? 'Creating…' : 'Create Trip'}
+            {loading
+              ? 'Creating…'
+              : mode === 'single'
+                ? 'Create Trip'
+                : 'Create Bulk Shipments'}
           </Button>
         </form>
       </DialogContent>

@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { signUp } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { Truck } from 'lucide-react';
 
 export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [transporterName, setTransporterName] = useState('');
+  const [accountType, setAccountType] = useState<'transporter' | 'company'>('transporter');
+  const [displayName, setDisplayName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -21,13 +24,20 @@ export default function Signup() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const trimmedCompany = companyName.trim();
+    if (!trimmedCompany) {
+      toast.error('Company name is required');
+      setLoading(false);
+      return;
+    }
+
+    const error = await signUp({
       email,
       password,
-      options: {
-        data: { transporter_name: transporterName },
-        emailRedirectTo: window.location.origin,
-      },
+      accountType,
+      displayName,
+      companyName: trimmedCompany,
+      emailRedirectTo: window.location.origin,
     });
     setLoading(false);
     if (error) {
@@ -46,18 +56,49 @@ export default function Signup() {
             <Truck className="w-6 h-6 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-display font-bold text-foreground">Create Account</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Get started with TrackFlow Lite</p>
+          <p className="text-muted-foreground mt-1 text-sm">Get started with Safarlink</p>
         </div>
 
         <div className="card-elevated p-6">
           <form onSubmit={handleSignup} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Transporter / Company Name</Label>
+              <Label>Account Type</Label>
+              <RadioGroup
+                value={accountType}
+                onValueChange={(value) => setAccountType(value as 'transporter' | 'company')}
+                className="flex items-center gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="transporter" id="role-transporter" />
+                  <Label htmlFor="role-transporter">Transporter</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="company" id="role-company" />
+                  <Label htmlFor="role-company">Company</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="name">Display Name</Label>
               <Input
                 id="name"
-                value={transporterName}
-                onChange={e => setTransporterName(e.target.value)}
-                placeholder="ABC Transport"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder={accountType === 'company' ? 'Mahansaria Plant Ops' : 'ABC Transport'}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="company-name">
+                {accountType === 'company' ? 'Shipper Company Name' : 'Transporter Company Name'}
+              </Label>
+              <Input
+                id="company-name"
+                value={companyName}
+                onChange={e => setCompanyName(e.target.value)}
+                placeholder={accountType === 'company' ? 'Mahansaria Tyres' : 'FastMove Logistics'}
                 required
               />
             </div>
