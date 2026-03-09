@@ -232,6 +232,7 @@ export type Database = {
           destination: string
           driver_name: string
           driver_phone: string
+          gps_tracking_link: string | null
           id: string
           is_active: boolean
           last_latitude: number | null
@@ -260,6 +261,7 @@ export type Database = {
           destination: string
           driver_name: string
           driver_phone: string
+          gps_tracking_link?: string | null
           id?: string
           is_active?: boolean
           last_latitude?: number | null
@@ -288,6 +290,7 @@ export type Database = {
           destination?: string
           driver_name?: string
           driver_phone?: string
+          gps_tracking_link?: string | null
           id?: string
           is_active?: boolean
           last_latitude?: number | null

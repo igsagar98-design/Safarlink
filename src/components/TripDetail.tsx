@@ -27,6 +27,15 @@ function getShareBaseUrl(): string {
   return normalizeBaseUrl(envBase || window.location.origin);
 }
 
+function isValidHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -60,6 +69,7 @@ export default function TripDetail({
     vehicle_number: trip.vehicle_number,
     driver_name: trip.driver_name,
     driver_phone: trip.driver_phone,
+    gps_tracking_link: trip.gps_tracking_link || '',
     transporter_name: trip.transporter_name,
     customer_name: trip.customer_name,
     origin: trip.origin,
@@ -76,6 +86,7 @@ export default function TripDetail({
       vehicle_number: trip.vehicle_number,
       driver_name: trip.driver_name,
       driver_phone: trip.driver_phone,
+      gps_tracking_link: trip.gps_tracking_link || '',
       transporter_name: trip.transporter_name,
       customer_name: trip.customer_name,
       origin: trip.origin,
@@ -134,10 +145,17 @@ export default function TripDetail({
   };
 
   const handleSave = async () => {
+    const gpsLink = form.gps_tracking_link.trim();
+    if (gpsLink && !isValidHttpUrl(gpsLink)) {
+      toast.error('GPS tracking link must start with http:// or https://');
+      return;
+    }
+
     setSaving(true);
     try {
       const updated = await updateTrip(trip.id, {
         ...form,
+        gps_tracking_link: gpsLink || null,
         planned_arrival: new Date(form.planned_arrival).toISOString(),
       });
       onUpdated?.(updated);
@@ -171,6 +189,7 @@ export default function TripDetail({
   const rows = [
     { icon: User, label: 'Driver', value: trip.driver_name },
     { icon: Phone, label: 'Phone', value: trip.driver_phone || '—' },
+    { icon: ExternalLink, label: 'GPS Link', value: trip.gps_tracking_link || '—' },
     { icon: Building, label: 'Transporter', value: trip.transporter_name },
     { icon: Building, label: 'Customer', value: trip.customer_name },
     { icon: Package, label: 'Material', value: trip.material },
@@ -250,6 +269,15 @@ export default function TripDetail({
               <Label className="text-xs">Driver Phone</Label>
               <Input value={form.driver_phone || ''} onChange={(e) => set('driver_phone', e.target.value)} />
             </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label className="text-xs">GPS Tracking Link (Optional)</Label>
+              <Input
+                type="url"
+                value={form.gps_tracking_link || ''}
+                onChange={(e) => set('gps_tracking_link', e.target.value)}
+                placeholder="https://gps.example.com/live/vehicle-123"
+              />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">Transporter</Label>
               <Input value={form.transporter_name} onChange={(e) => set('transporter_name', e.target.value)} />
@@ -293,31 +321,45 @@ export default function TripDetail({
         </div>
       )}
 
-      <div className="border-t pt-4 space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Share Links</p>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => copy(driverLink, 'Driver')}>
-              <Copy className="w-3.5 h-3.5 mr-1" /> Copy Driver Link
-            </Button>
-            <a href={driverWhatsappLink} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="text-xs">
-                <ExternalLink className="w-3.5 h-3.5 mr-1" /> WhatsApp Driver
+      {allowManagement && (
+        <div className="border-t pt-4 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Share Links</p>
+          <div className="flex flex-col gap-2">
+            {trip.gps_tracking_link && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => copy(trip.gps_tracking_link, 'GPS')}>
+                  <Copy className="w-3.5 h-3.5 mr-1" /> Copy GPS Link
+                </Button>
+                <a href={trip.gps_tracking_link} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm" className="text-xs">
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open GPS
+                  </Button>
+                </a>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => copy(driverLink, 'Driver')}>
+                <Copy className="w-3.5 h-3.5 mr-1" /> Copy Driver Link
               </Button>
-            </a>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => copy(customerLink, 'Customer')}>
-              <Copy className="w-3.5 h-3.5 mr-1" /> Copy Customer Link
-            </Button>
-            <a href={customerWhatsappLink} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm" className="text-xs">
-                <ExternalLink className="w-3.5 h-3.5 mr-1" /> WhatsApp Customer
+              <a href={driverWhatsappLink} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm" className="text-xs">
+                  <ExternalLink className="w-3.5 h-3.5 mr-1" /> WhatsApp Driver
+                </Button>
+              </a>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => copy(customerLink, 'Customer')}>
+                <Copy className="w-3.5 h-3.5 mr-1" /> Copy Customer Link
               </Button>
-            </a>
+              <a href={customerWhatsappLink} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm" className="text-xs">
+                  <ExternalLink className="w-3.5 h-3.5 mr-1" /> WhatsApp Customer
+                </Button>
+              </a>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="border-t pt-4 space-y-2">
         <p className="text-xs font-medium text-muted-foreground">Trip Timeline</p>

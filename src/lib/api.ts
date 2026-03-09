@@ -27,6 +27,7 @@ export interface CreateTripInput {
   vehicle_number: string;
   driver_name: string;
   driver_phone: string;
+  gps_tracking_link?: string | null;
   transporter_name: string;
   customer_name: string;
   origin: string;
@@ -41,6 +42,7 @@ export interface UpdateTripInput {
   vehicle_number?: string;
   driver_name?: string;
   driver_phone?: string;
+  gps_tracking_link?: string | null;
   transporter_name?: string;
   customer_name?: string;
   origin?: string;
