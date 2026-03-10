@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import TripTimeline from '@/components/TripTimeline';
+import TrackingMap from '@/components/TrackingMap';
 
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
@@ -140,6 +141,26 @@ export default function CustomerTracking() {
             </p>
           </div>
         )}
+
+        <TrackingMap
+          pickup={
+            typeof trip.pickup_latitude === 'number' && typeof trip.pickup_longitude === 'number'
+              ? { lat: trip.pickup_latitude, lng: trip.pickup_longitude }
+              : null
+          }
+          drop={
+            typeof trip.drop_latitude === 'number' && typeof trip.drop_longitude === 'number'
+              ? { lat: trip.drop_latitude, lng: trip.drop_longitude }
+              : null
+          }
+          driver={
+            typeof trip.last_latitude === 'number' && typeof trip.last_longitude === 'number'
+              ? { lat: trip.last_latitude, lng: trip.last_longitude }
+              : null
+          }
+          zoom={10}
+          className="h-64"
+        />
 
         {/* Progress */}
         <div className="card-elevated p-4 space-y-2">

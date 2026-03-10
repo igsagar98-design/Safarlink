@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import TrackingMap from '@/components/TrackingMap';
 import { toast } from 'sonner';
 import { MapPin, Navigation, Package, Clock, AlertTriangle, XCircle, CheckCircle, Truck } from 'lucide-react';
 import { format } from 'date-fns';
@@ -364,6 +365,26 @@ export default function DriverTracking() {
         </div>
 
         {/* Route progress */}
+        <TrackingMap
+          pickup={
+            typeof trip.pickup_latitude === 'number' && typeof trip.pickup_longitude === 'number'
+              ? { lat: trip.pickup_latitude, lng: trip.pickup_longitude }
+              : null
+          }
+          drop={
+            typeof trip.drop_latitude === 'number' && typeof trip.drop_longitude === 'number'
+              ? { lat: trip.drop_latitude, lng: trip.drop_longitude }
+              : null
+          }
+          driver={
+            typeof trip.last_latitude === 'number' && typeof trip.last_longitude === 'number'
+              ? { lat: trip.last_latitude, lng: trip.last_longitude }
+              : null
+          }
+          zoom={11}
+          className="h-64"
+        />
+
         <div className="card-elevated p-4 space-y-2">
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{trip.origin}</span>
