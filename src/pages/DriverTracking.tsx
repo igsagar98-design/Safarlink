@@ -100,24 +100,28 @@ export default function DriverTracking() {
   }, [fetchTrip]);
 
   // Send location update
-  const sendLocation = useCallback(async (lat: number, lng: number) => {
-    if (!trip) return;
+  const sendLocation = useCallback(async (lat: number, lng: number): Promise<boolean> => {
+    if (!trip) return false;
     try {
       await postDriverLocationUpdate(trip.id, lat, lng, { trackingToken: trip.tracking_token });
       setLocationSendFailed(false);
-      setLastLocationSentAt(new Date().toISOString());
+      const sentAt = new Date().toISOString();
+      setLastLocationSentAt(sentAt);
+      lastLocationPushAtRef.current = Date.now();
       const nextTrip = {
         ...trip,
         last_latitude: lat,
         last_longitude: lng,
         last_location_name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-        last_update_at: new Date().toISOString(),
+        last_update_at: sentAt,
       };
       setTrip(nextTrip);
       await refreshRouteProgress(nextTrip);
+      return true;
     } catch {
       setLocationSendFailed(true);
       toast.error('Failed to send location update');
+      return false;
     }
   }, [refreshRouteProgress, trip]);
 
@@ -131,7 +135,6 @@ export default function DriverTracking() {
       return;
     }
 
-    lastLocationPushAtRef.current = now;
     void sendLocation(latitude, longitude);
   }, [sendLocation]);
 
