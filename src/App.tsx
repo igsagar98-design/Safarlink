@@ -12,6 +12,7 @@ import Profile from "./pages/Profile";
 import CompanyProfile from "./pages/CompanyProfile";
 import DriverTracking from "./pages/DriverTracking";
 import CustomerTracking from "./pages/CustomerTracking";
+import TrackingPage from "./pages/TrackingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/company-profile" element={<CompanyProfile />} />
           <Route path="/driver/:token" element={<DriverTracking />} />
           <Route path="/track/:token" element={<CustomerTracking />} />
+          <Route path="/tracking" element={<TrackingPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -507,12 +507,6 @@ export async function postDriverStatusUpdate(
     note: `Driver reported: ${status}`,
   });
   if (statusHistoryError) throw statusHistoryError;
-
-  const { error: tripStatusError } = await supabase
-    .from('trips')
-    .update({ status })
-    .eq('id', tripId);
-  if (tripStatusError) throw tripStatusError;
 }
 
 export async function markTripArrived(tripId: string): Promise<void> {
@@ -523,16 +517,6 @@ export async function markTripArrived(tripId: string): Promise<void> {
 
 export async function markTripDelivered(tripId: string): Promise<void> {
   const deliveredAt = new Date().toISOString();
-
-  const { error: tripError } = await supabase
-    .from('trips')
-    .update({
-      status: 'delivered',
-      is_active: false,
-      updated_at: deliveredAt,
-    })
-    .eq('id', tripId);
-  if (tripError) throw tripError;
 
   const { error: historyError } = await supabase.from('trip_status_updates').insert({
     trip_id: tripId,
