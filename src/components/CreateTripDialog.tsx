@@ -21,6 +21,13 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
+import LocationAutocomplete from '@/components/LocationAutocomplete';
+
+type SelectedLocation = {
+  address: string;
+  lat: number;
+  lng: number;
+};
 
 interface Props {
   onCreated: (trip: Trip) => void | Promise<void>;
@@ -39,6 +46,8 @@ export default function CreateTripDialog({ onCreated }: Props) {
   const [newCompanyName, setNewCompanyName] = useState('');
   const [creatingCompany, setCreatingCompany] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
+  const [pickupLocation, setPickupLocation] = useState<SelectedLocation | null>(null);
+  const [dropLocation, setDropLocation] = useState<SelectedLocation | null>(null);
   const [form, setForm] = useState({
     vehicle_number: '',
     driver_name: '',
@@ -289,6 +298,10 @@ export default function CreateTripDialog({ onCreated }: Props) {
           transporter_company_id: profile.company_id,
           company_id: companyId,
           ...form,
+          pickup_latitude: pickupLocation?.lat ?? null,
+          pickup_longitude: pickupLocation?.lng ?? null,
+          drop_latitude: dropLocation?.lat ?? null,
+          drop_longitude: dropLocation?.lng ?? null,
           gps_tracking_link: gpsLink,
           driver_name: driverName,
           driver_phone: driverPhone,
@@ -317,6 +330,8 @@ export default function CreateTripDialog({ onCreated }: Props) {
         planned_arrival: '',
       });
       setBulkInput('');
+      setPickupLocation(null);
+      setDropLocation(null);
       setGpsOnlyMode(false);
       setOpen(false);
       if (createdTrip) {
@@ -489,19 +504,51 @@ export default function CreateTripDialog({ onCreated }: Props) {
 
               {fields
                 .filter((f) => !(gpsOnlyMode && f.hiddenInGpsOnly))
-                .map(f => (
-              <div key={f.key} className="space-y-1">
-                <Label htmlFor={f.key} className="text-xs">{f.label}</Label>
-                <Input
-                  id={f.key}
-                  type={f.type || 'text'}
-                  value={form[f.key]}
-                  onChange={e => set(f.key, e.target.value)}
-                  placeholder={f.placeholder}
-                  required={f.required ?? true}
-                />
-              </div>
-                ))}
+                .map(f => {
+                  if (f.key === 'origin') {
+                    return (
+                      <LocationAutocomplete
+                        key={f.key}
+                        id="origin"
+                        label="Pickup Location"
+                        placeholder="Search pickup location"
+                        value={form.origin}
+                        required
+                        onChange={(value) => set('origin', value)}
+                        onSelect={setPickupLocation}
+                      />
+                    );
+                  }
+
+                  if (f.key === 'destination') {
+                    return (
+                      <LocationAutocomplete
+                        key={f.key}
+                        id="destination"
+                        label="Drop Location"
+                        placeholder="Search drop location"
+                        value={form.destination}
+                        required
+                        onChange={(value) => set('destination', value)}
+                        onSelect={setDropLocation}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div key={f.key} className="space-y-1">
+                      <Label htmlFor={f.key} className="text-xs">{f.label}</Label>
+                      <Input
+                        id={f.key}
+                        type={f.type || 'text'}
+                        value={form[f.key]}
+                        onChange={e => set(f.key, e.target.value)}
+                        placeholder={f.placeholder}
+                        required={f.required ?? true}
+                      />
+                    </div>
+                  );
+                })}
             </>
           ) : (
             <div className="space-y-2">

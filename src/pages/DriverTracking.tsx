@@ -30,6 +30,8 @@ export default function DriverTracking() {
   const [error, setError] = useState('');
   const [locationGranted, setLocationGranted] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [lastLocationSentAt, setLastLocationSentAt] = useState<string | null>(null);
+  const [locationSendFailed, setLocationSendFailed] = useState(false);
   const [geoPermissionState, setGeoPermissionState] = useState<PermissionStateLike>('unsupported');
   const [currentStatus, setCurrentStatus] = useState<DriverStatus>('on_time');
   const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
@@ -102,6 +104,8 @@ export default function DriverTracking() {
     if (!trip) return;
     try {
       await postDriverLocationUpdate(trip.id, lat, lng, { trackingToken: trip.tracking_token });
+      setLocationSendFailed(false);
+      setLastLocationSentAt(new Date().toISOString());
       const nextTrip = {
         ...trip,
         last_latitude: lat,
@@ -112,6 +116,7 @@ export default function DriverTracking() {
       setTrip(nextTrip);
       await refreshRouteProgress(nextTrip);
     } catch {
+      setLocationSendFailed(true);
       toast.error('Failed to send location update');
     }
   }, [refreshRouteProgress, trip]);
@@ -359,11 +364,27 @@ export default function DriverTracking() {
           </div>
         )}
 
-        {locationGranted && (
+        {locationGranted && lastLocationSentAt && (
           <div className="card-elevated p-4 text-center">
             <CheckCircle className="w-6 h-6 text-success mx-auto mb-1" />
             <p className="text-sm font-medium">Location sharing active</p>
             <p className="text-xs text-muted-foreground">Updates sent every 3 minutes</p>
+          </div>
+        )}
+
+        {locationGranted && !lastLocationSentAt && !locationDenied && (
+          <div className="card-elevated p-4 text-center">
+            <Navigation className="w-6 h-6 text-primary mx-auto mb-1" />
+            <p className="text-sm font-medium">Location permission granted</p>
+            <p className="text-xs text-muted-foreground">Waiting to send first GPS update...</p>
+          </div>
+        )}
+
+        {locationSendFailed && !locationDenied && (
+          <div className="card-elevated p-4 text-center border-destructive">
+            <AlertTriangle className="w-6 h-6 text-destructive mx-auto mb-1" />
+            <p className="text-sm font-medium">GPS update failed</p>
+            <p className="text-xs text-muted-foreground">Check network and keep this page active to retry.</p>
           </div>
         )}
 

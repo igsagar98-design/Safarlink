@@ -230,6 +230,8 @@ export type Database = {
           customer_name: string
           customer_tracking_token: string
           destination: string
+          drop_latitude: number | null
+          drop_longitude: number | null
           driver_name: string
           driver_phone: string
           gps_tracking_link: string | null
@@ -241,6 +243,8 @@ export type Database = {
           last_update_at: string | null
           material: string
           origin: string
+          pickup_latitude: number | null
+          pickup_longitude: number | null
           predicted_arrival: string | null
           planned_arrival: string
           delay_minutes: number | null
@@ -259,6 +263,8 @@ export type Database = {
           customer_name: string
           customer_tracking_token?: string
           destination: string
+          drop_latitude?: number | null
+          drop_longitude?: number | null
           driver_name: string
           driver_phone: string
           gps_tracking_link?: string | null
@@ -270,6 +276,8 @@ export type Database = {
           last_update_at?: string | null
           material: string
           origin: string
+          pickup_latitude?: number | null
+          pickup_longitude?: number | null
           predicted_arrival?: string | null
           planned_arrival: string
           delay_minutes?: number | null
@@ -288,6 +296,8 @@ export type Database = {
           customer_name?: string
           customer_tracking_token?: string
           destination?: string
+          drop_latitude?: number | null
+          drop_longitude?: number | null
           driver_name?: string
           driver_phone?: string
           gps_tracking_link?: string | null
@@ -299,6 +309,8 @@ export type Database = {
           last_update_at?: string | null
           material?: string
           origin?: string
+          pickup_latitude?: number | null
+          pickup_longitude?: number | null
           predicted_arrival?: string | null
           planned_arrival?: string
           delay_minutes?: number | null
