@@ -98,7 +98,7 @@ export default function TrackingMap({
         {isValidCoordinate(driver) && (
           <Marker
             position={driver}
-            label={{ text: 'R', color: '#ffffff', fontWeight: 'bold' }}
+            label={{ text: '🚚', color: '#ffffff', fontWeight: 'bold' }}
             title="Driver"
           />
         )}
