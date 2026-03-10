@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import TrackingMap from '@/components/TrackingMap';
 
+const TIMELINE_REFRESH_INTERVAL_MS = 15 * 1000;
+
 interface Props {
   trip: Trip;
   onClose: () => void;
@@ -70,6 +72,7 @@ export default function TripDetail({
 }: Props) {
   const status = calculateTripStatus(trip);
   const [events, setEvents] = useState<TripEvent[]>([]);
+  const [eventsUnavailable, setEventsUnavailable] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -111,18 +114,23 @@ export default function TripDetail({
       try {
         const data = await listTripEvents(trip.id);
         if (!active) return;
+        setEventsUnavailable(false);
         setEvents(data);
       } catch {
         if (!active) return;
+        setEventsUnavailable(true);
         setEvents([]);
       }
     };
 
     fetchEvents();
+    const interval = setInterval(fetchEvents, TIMELINE_REFRESH_INTERVAL_MS);
+
     return () => {
       active = false;
+      clearInterval(interval);
     };
-  }, [trip.id]);
+  }, [trip.id, trip.last_update_at]);
 
   const driverWhatsappLink = useMemo(() => {
     const message = `Driver tracking link for vehicle ${trip.vehicle_number}: ${driverLink}`;
@@ -410,7 +418,11 @@ export default function TripDetail({
 
       <div className="border-t pt-4 space-y-2">
         <p className="text-xs font-medium text-muted-foreground">Trip Timeline</p>
-        <TripTimeline events={events} compact />
+        {eventsUnavailable ? (
+          <p className="text-xs text-muted-foreground">Timeline unavailable for this account.</p>
+        ) : (
+          <TripTimeline events={events} compact />
+        )}
       </div>
     </div>
   );
