@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import TripTimeline from '@/components/TripTimeline';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import TrackingMap from '@/components/TrackingMap';
 
 interface Props {
   trip: Trip;
@@ -20,6 +21,12 @@ interface Props {
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+function toMapPoint(latitude?: number | null, longitude?: number | null) {
+  if (typeof latitude !== 'number' || !Number.isFinite(latitude)) return null;
+  if (typeof longitude !== 'number' || !Number.isFinite(longitude)) return null;
+  return { lat: latitude, lng: longitude };
 }
 
 function getShareBaseUrl(): string {
@@ -126,6 +133,10 @@ export default function TripDetail({
     const message = `Customer tracking link for vehicle ${trip.vehicle_number}: ${customerLink}`;
     return `https://wa.me/?text=${encodeURIComponent(message)}`;
   }, [customerLink, trip.vehicle_number]);
+  const pickupPoint = toMapPoint(trip.pickup_latitude, trip.pickup_longitude);
+  const dropPoint = toMapPoint(trip.drop_latitude, trip.drop_longitude);
+  const driverPoint = toMapPoint(trip.last_latitude, trip.last_longitude);
+  const hasTrackingMap = Boolean(pickupPoint || dropPoint || driverPoint);
 
   const copy = async (text: string, label: string) => {
     try {
@@ -211,7 +222,11 @@ export default function TripDetail({
           ? `${trip.delay_minutes} min delayed`
           : 'No delay predicted',
     },
-    { icon: MapPin, label: 'Last Location', value: trip.last_location_name || 'No updates yet' },
+    {
+      icon: MapPin,
+      label: 'Last Location',
+      value: driverPoint ? 'Live marker shown on map' : (trip.last_location_name || 'No updates yet'),
+    },
     { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
   ];
 
@@ -237,6 +252,38 @@ export default function TripDetail({
             <span className="font-medium truncate">{r.value}</span>
           </div>
         ))}
+      </div>
+
+      <div className="border-t pt-4 space-y-3">
+        <p className="text-xs font-medium text-muted-foreground">Live Tracking</p>
+        {hasTrackingMap ? (
+          <TrackingMap
+            pickup={pickupPoint}
+            drop={dropPoint}
+            driver={driverPoint}
+            zoom={11}
+            className="h-56"
+          />
+        ) : (
+          <div className="rounded-xl border bg-card px-4 py-3">
+            <p className="text-sm font-medium">Tracking map will appear once location data is available.</p>
+            <p className="text-xs text-muted-foreground mt-1">The driver has not sent a usable GPS point yet.</p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <a href={customerLink} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-[180px]">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+              <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open Live Tracking
+            </Button>
+          </a>
+          {trip.gps_tracking_link && (
+            <a href={trip.gps_tracking_link} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-[180px]">
+              <Button variant="outline" size="sm" className="w-full text-xs">
+                <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open GPS Provider
+              </Button>
+            </a>
+          )}
+        </div>
       </div>
 
       {allowManagement && (
