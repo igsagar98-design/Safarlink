@@ -138,6 +138,35 @@ export default function DriverTracking() {
     void sendLocation(latitude, longitude);
   }, [sendLocation]);
 
+  const sendCurrentLocationNow = useCallback(() => {
+    if (!navigator.geolocation) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocationGranted(true);
+        setLocationDenied(false);
+        // Immediate first sync so customer view updates right away.
+        void sendLocation(position.coords.latitude, position.coords.longitude);
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setGeoPermissionState('denied');
+          setLocationDenied(true);
+          setLocationGranted(false);
+          stopLocationWatch();
+          toast.error('Location permission denied');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000,
+      }
+    );
+  }, [sendLocation, stopLocationWatch]);
+
   const startLocationWatch = useCallback(() => {
     if (!navigator.geolocation) {
       toast.error('Geolocation not supported');
@@ -172,7 +201,10 @@ export default function DriverTracking() {
         timeout: 20000,
       }
     );
-  }, [pushLocationIfDue, stopLocationWatch]);
+
+    // Kick off an immediate location push instead of waiting for watch interval callbacks.
+    sendCurrentLocationNow();
+  }, [pushLocationIfDue, sendCurrentLocationNow, stopLocationWatch]);
 
   useEffect(() => {
     if (!('permissions' in navigator) || !navigator.permissions?.query) {
@@ -241,6 +273,7 @@ export default function DriverTracking() {
 
     setLocationDenied(false);
     startLocationWatch();
+    sendCurrentLocationNow();
   };
 
   useEffect(() => {
