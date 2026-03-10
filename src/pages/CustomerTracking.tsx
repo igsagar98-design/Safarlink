@@ -53,8 +53,15 @@ export default function CustomerTracking() {
           currentLongitude: data.last_longitude,
         });
         setRouteProgress(progress);
-      } catch {
-        setRouteProgress(null);
+          } catch (err) {
+              console.error('Route progress failed with input:', {
+                origin: data.origin,
+                destination: data.destination,
+                lat: data.last_latitude,
+                lng: data.last_longitude,
+              });
+              console.error('Error details:', err instanceof Error ? err.message : String(err));
+              setRouteProgress(null);
       }
     } catch {
       setError('Tracking link not found.');

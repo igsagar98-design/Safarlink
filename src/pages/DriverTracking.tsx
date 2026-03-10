@@ -51,7 +51,14 @@ export default function DriverTracking() {
         currentLongitude: nextTrip.last_longitude,
       });
       setRouteProgress(progress);
-    } catch {
+    } catch (err: unknown) {
+      console.error('Route progress failed with input:', {
+        origin: nextTrip.origin,
+        destination: nextTrip.destination,
+        lat: nextTrip.last_latitude,
+        lng: nextTrip.last_longitude,
+      });
+      console.error('Error details:', err instanceof Error ? err.message : String(err));
       setRouteProgress(null);
     }
   }, []);
