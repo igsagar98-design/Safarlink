@@ -1,1 +1,7 @@
 project_id = "kywkauwkuhfdhwycikxg"
+
+[functions.route-progress]
+verify_jwt = false
+
+[functions.predict-delay]
+verify_jwt = false
