@@ -6,6 +6,20 @@ const defaultMapContainerStyle = {
   height: '100%',
 };
 
+const driverTruckIconSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+  <rect x="4" y="13" width="24" height="14" rx="2" fill="#2563eb" />
+  <rect x="28" y="17" width="10" height="10" rx="2" fill="#3b82f6" />
+  <rect x="30" y="19" width="5" height="4" rx="1" fill="#dbeafe" />
+  <circle cx="13" cy="30" r="4" fill="#0f172a" />
+  <circle cx="32" cy="30" r="4" fill="#0f172a" />
+  <circle cx="13" cy="30" r="1.8" fill="#94a3b8" />
+  <circle cx="32" cy="30" r="1.8" fill="#94a3b8" />
+</svg>
+`;
+
+const driverTruckIconUrl = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(driverTruckIconSvg)}`;
+
 function isValidCoordinate(point) {
   return (
     point
@@ -98,7 +112,15 @@ export default function TrackingMap({
         {isValidCoordinate(driver) && (
           <Marker
             position={driver}
-            label={{ text: '🚚', color: '#ffffff', fontWeight: 'bold' }}
+            icon={
+              window.google?.maps
+                ? {
+                    url: driverTruckIconUrl,
+                    scaledSize: new window.google.maps.Size(28, 28),
+                    anchor: new window.google.maps.Point(14, 14),
+                  }
+                : undefined
+            }
             title="Driver"
           />
         )}
