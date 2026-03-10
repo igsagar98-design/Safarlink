@@ -21,7 +21,8 @@ import { format } from 'date-fns';
 
 type DriverStatus = Exclude<TripStatus, 'delivered'>;
 
-const LOCATION_PUSH_INTERVAL_MS = 3 * 60 * 1000;
+const LOCATION_PUSH_INTERVAL_MS = 60 * 1000;
+const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
 type PermissionStateLike = 'granted' | 'denied' | 'prompt' | 'unsupported';
 
 export default function DriverTracking() {
@@ -103,7 +104,7 @@ export default function DriverTracking() {
   // Fetch trip by tracking token
   useEffect(() => {
     fetchTrip();
-    const refreshInterval = setInterval(fetchTrip, 60000);
+    const refreshInterval = setInterval(fetchTrip, TRACKING_REFRESH_INTERVAL_MS);
     return () => clearInterval(refreshInterval);
   }, [fetchTrip]);
 
@@ -146,7 +147,7 @@ export default function DriverTracking() {
     void sendLocation(latitude, longitude);
   }, [sendLocation]);
 
-  const sendCurrentLocationNow = useCallback(() => {
+  const requestCurrentLocation = useCallback((forceImmediateSend: boolean) => {
     if (!navigator.geolocation) {
       return;
     }
@@ -155,8 +156,12 @@ export default function DriverTracking() {
       (position) => {
         setLocationGranted(true);
         setLocationDenied(false);
-        // Immediate first sync so customer view updates right away.
-        void sendLocation(position.coords.latitude, position.coords.longitude);
+        if (forceImmediateSend) {
+          void sendLocation(position.coords.latitude, position.coords.longitude);
+          return;
+        }
+
+        pushLocationIfDue(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {
@@ -173,7 +178,7 @@ export default function DriverTracking() {
         timeout: 15000,
       }
     );
-  }, [sendLocation, stopLocationWatch]);
+  }, [pushLocationIfDue, sendLocation, stopLocationWatch]);
 
   const startLocationWatch = useCallback(() => {
     if (!navigator.geolocation) {
@@ -211,8 +216,8 @@ export default function DriverTracking() {
     );
 
     // Kick off an immediate location push instead of waiting for watch interval callbacks.
-    sendCurrentLocationNow();
-  }, [pushLocationIfDue, sendCurrentLocationNow, stopLocationWatch]);
+    requestCurrentLocation(true);
+  }, [pushLocationIfDue, requestCurrentLocation, stopLocationWatch]);
 
   useEffect(() => {
     if (!('permissions' in navigator) || !navigator.permissions?.query) {
@@ -281,8 +286,28 @@ export default function DriverTracking() {
 
     setLocationDenied(false);
     startLocationWatch();
-    sendCurrentLocationNow();
+    requestCurrentLocation(true);
   };
+
+  useEffect(() => {
+    if (!trip || !locationGranted || locationDenied || lastLocationSentAt) {
+      return;
+    }
+
+    requestCurrentLocation(true);
+  }, [lastLocationSentAt, locationDenied, locationGranted, requestCurrentLocation, trip]);
+
+  useEffect(() => {
+    if (!trip || !locationGranted || locationDenied || trip.status === 'delivered') {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      requestCurrentLocation(false);
+    }, LOCATION_PUSH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [locationDenied, locationGranted, requestCurrentLocation, trip]);
 
   useEffect(() => {
     return () => {
@@ -432,7 +457,7 @@ export default function DriverTracking() {
           <div className="card-elevated p-4 text-center">
             <CheckCircle className="w-6 h-6 text-success mx-auto mb-1" />
             <p className="text-sm font-medium">Location sharing active</p>
-            <p className="text-xs text-muted-foreground">Updates sent every 3 minutes</p>
+            <p className="text-xs text-muted-foreground">Updates sent about every minute</p>
           </div>
         )}
 

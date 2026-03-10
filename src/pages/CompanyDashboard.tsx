@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 
 const ALL_TRANSPORTERS_VALUE = '__all_transporters__';
 const ALL_STATUS_VALUE = '__all_status__';
+const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
 
 type ComputedStatus = 'on_time' | 'at_risk' | 'late' | 'delivered';
 
@@ -63,6 +64,16 @@ export default function CompanyDashboard() {
     if (user && accountType === 'company') {
       fetchTrips();
     }
+  }, [user, accountType]);
+
+  useEffect(() => {
+    if (!user || accountType !== 'company') return;
+
+    const interval = setInterval(() => {
+      void fetchTrips();
+    }, TRACKING_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
   }, [user, accountType]);
 
   const statusByTrip = useMemo(() => {

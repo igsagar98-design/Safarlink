@@ -15,6 +15,8 @@ import { Progress } from '@/components/ui/progress';
 import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
 
+const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -75,8 +77,7 @@ export default function CustomerTracking() {
 
   useEffect(() => {
     fetchTrip();
-    // Auto-refresh every 60 seconds
-    const interval = setInterval(fetchTrip, 60000);
+    const interval = setInterval(fetchTrip, TRACKING_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -205,7 +206,7 @@ export default function CustomerTracking() {
           <TripTimeline events={events} />
         </div>
 
-        <p className="text-xs text-center text-muted-foreground">Auto-refreshes every 60 seconds</p>
+        <p className="text-xs text-center text-muted-foreground">Auto-refreshes every 15 seconds</p>
       </div>
     </div>
   );

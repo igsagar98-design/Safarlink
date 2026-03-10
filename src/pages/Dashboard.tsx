@@ -20,6 +20,7 @@ import { Truck, CheckCircle, AlertTriangle, XCircle, LogOut, Search, Building2, 
 import { toast } from 'sonner';
 
 const ALL_COMPANIES_VALUE = '__all_companies__';
+const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
 
 export default function Dashboard() {
   const { user, accountType, loading: authLoading, signOut } = useAuth();
@@ -76,6 +77,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user) fetchTrips();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      void fetchTrips();
+    }, TRACKING_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
   }, [user]);
 
   useEffect(() => {
