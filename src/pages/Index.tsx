@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import AppLogo from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
@@ -7,18 +6,6 @@ import { Truck, Route, Link2, MapPinned, ClipboardList, Radar, Building2, Users,
 
 export default function Index() {
   const { user, accountType, loading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        navigate('/login');
-        return;
-      }
-
-      navigate(accountType === 'company' ? '/company-dashboard' : '/dashboard');
-    }
-  }, [user, accountType, loading, navigate]);
 
   if (loading) {
     return (
@@ -62,10 +49,14 @@ export default function Index() {
               </p>
               <div className="mt-7 flex flex-wrap items-center gap-3">
                 <Button asChild size="lg" className="bg-primary hover:bg-primary/90">
-                  <Link to="/signup">Start Free</Link>
+                  <Link to={user ? (accountType === 'company' ? '/company-dashboard' : '/dashboard') : '/signup'}>
+                    {user ? 'Go To Dashboard' : 'Start Free'}
+                  </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-                  <Link to="/login">Login</Link>
+                  <Link to={user ? (accountType === 'company' ? '/company-dashboard' : '/dashboard') : '/login'}>
+                    {user ? 'Open App' : 'Login'}
+                  </Link>
                 </Button>
               </div>
             </div>
