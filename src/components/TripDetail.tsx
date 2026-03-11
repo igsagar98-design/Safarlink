@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Trip } from '@/components/TripCard';
-import { deleteTrip, listTripEvents, type TripEvent, updateTrip } from '@/lib/api';
+import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripEvent, type TripStopType, updateTrip, updateTripCreatedEventMetadata } from '@/lib/api';
 import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle } from 'lucide-react';
+import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import TripTimeline from '@/components/TripTimeline';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import TrackingMap from '@/components/TrackingMap';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import LocationAutocomplete from '@/components/LocationAutocomplete';
 
 const TIMELINE_REFRESH_INTERVAL_MS = 15 * 1000;
 
@@ -31,6 +39,29 @@ function toMapPoint(latitude?: number | null, longitude?: number | null) {
   return { lat: latitude, lng: longitude };
 }
 
+type SelectedLocation = {
+  address: string;
+  lat: number;
+  lng: number;
+};
+
+type AdditionalStop = {
+  id: string;
+  type: TripStopType;
+  location: string;
+  selectedLocation: SelectedLocation | null;
+};
+
+type TripCreatedEventMetadata = {
+  additional_stops?: Array<{
+    sequence?: number;
+    type?: TripStopType;
+    address?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+  }>;
+};
+
 function getShareBaseUrl(): string {
   const envBase = (import.meta.env.VITE_SHARE_BASE_URL as string | undefined)?.trim();
   return normalizeBaseUrl(envBase || window.location.origin);
@@ -43,6 +74,30 @@ function isValidHttpUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function createStopId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `stop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function mapMetadataStops(events: TripEvent[]): AdditionalStop[] {
+  const tripCreatedEvent = [...events].reverse().find((event) => event.event_type === 'trip_created');
+  const metadata = (tripCreatedEvent?.metadata ?? {}) as TripCreatedEventMetadata;
+  const additionalStops = Array.isArray(metadata.additional_stops) ? metadata.additional_stops : [];
+
+  return additionalStops.map((stop) => ({
+    id: createStopId(),
+    type: stop.type === 'delivery' ? 'delivery' : 'pickup',
+    location: stop.address ?? '',
+    selectedLocation:
+      typeof stop.latitude === 'number' && typeof stop.longitude === 'number'
+        ? { address: stop.address ?? '', lat: stop.latitude, lng: stop.longitude }
+        : null,
+  }));
 }
 
 async function copyText(text: string): Promise<void> {
@@ -75,6 +130,7 @@ export default function TripDetail({
   const [eventsUnavailable, setEventsUnavailable] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [additionalStops, setAdditionalStops] = useState<AdditionalStop[]>([]);
   const [form, setForm] = useState({
     vehicle_number: trip.vehicle_number,
     driver_name: trip.driver_name,
@@ -110,21 +166,40 @@ export default function TripDetail({
   useEffect(() => {
     let active = true;
 
-    const fetchEvents = async () => {
+    const fetchData = async () => {
       try {
-        const data = await listTripEvents(trip.id);
+        const [eventData, stopData] = await Promise.all([
+          listTripEvents(trip.id),
+          listTripStops(trip.id),
+        ]);
+
         if (!active) return;
         setEventsUnavailable(false);
-        setEvents(data);
+        setEvents(eventData);
+
+        if (stopData.length > 0) {
+          setAdditionalStops(stopData.map((stop) => ({
+            id: stop.id,
+            type: stop.stop_type,
+            location: stop.location_name,
+            selectedLocation:
+              typeof stop.latitude === 'number' && typeof stop.longitude === 'number'
+                ? { address: stop.location_name, lat: stop.latitude, lng: stop.longitude }
+                : null,
+          })));
+        } else {
+          setAdditionalStops(mapMetadataStops(eventData));
+        }
       } catch {
         if (!active) return;
         setEventsUnavailable(true);
         setEvents([]);
+        setAdditionalStops([]);
       }
     };
 
-    fetchEvents();
-    const interval = setInterval(fetchEvents, TIMELINE_REFRESH_INTERVAL_MS);
+    fetchData();
+    const interval = setInterval(fetchData, TIMELINE_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;
@@ -163,6 +238,59 @@ export default function TripDetail({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleAddStop = () => {
+    setAdditionalStops((current) => [
+      ...current,
+      {
+        id: createStopId(),
+        type: 'pickup',
+        location: '',
+        selectedLocation: null,
+      },
+    ]);
+  };
+
+  const handleRemoveStop = (stopId: string) => {
+    setAdditionalStops((current) => current.filter((stop) => stop.id !== stopId));
+  };
+
+  const handleStopTypeChange = (stopId: string, type: TripStopType) => {
+    setAdditionalStops((current) =>
+      current.map((stop) => (stop.id === stopId ? { ...stop, type } : stop))
+    );
+  };
+
+  const handleStopLocationChange = (stopId: string, location: string) => {
+    setAdditionalStops((current) =>
+      current.map((stop) => (
+        stop.id === stopId
+          ? { ...stop, location, selectedLocation: location.trim() ? stop.selectedLocation : null }
+          : stop
+      ))
+    );
+  };
+
+  const handleStopLocationSelect = (stopId: string, selectedLocation: SelectedLocation | null) => {
+    setAdditionalStops((current) =>
+      current.map((stop) => (stop.id === stopId ? { ...stop, selectedLocation } : stop))
+    );
+  };
+
+  const buildStopPayload = () => {
+    const incompleteStop = additionalStops.find((stop) => !stop.location.trim());
+    if (incompleteStop) {
+      throw new Error('Every additional stop must include a location or be removed.');
+    }
+
+    return additionalStops.map((stop, index) => ({
+      stop_order: index + 1,
+      stop_type: stop.type,
+      location_name: stop.location.trim(),
+      latitude: stop.selectedLocation?.lat ?? null,
+      longitude: stop.selectedLocation?.lng ?? null,
+    }));
+  };
+
   const handleSave = async () => {
     const gpsLink = form.gps_tracking_link.trim();
     if (gpsLink && !isValidHttpUrl(gpsLink)) {
@@ -172,11 +300,27 @@ export default function TripDetail({
 
     setSaving(true);
     try {
+      const stopPayload = buildStopPayload();
       const updated = await updateTrip(trip.id, {
         ...form,
         gps_tracking_link: gpsLink || null,
         planned_arrival: new Date(form.planned_arrival).toISOString(),
       });
+
+      const savedStops = await replaceTripStops(trip.id, stopPayload);
+
+      if (savedStops.length === 0 && stopPayload.length > 0) {
+        await updateTripCreatedEventMetadata(trip.id, {
+          additional_stops: stopPayload.map((stop) => ({
+            sequence: stop.stop_order,
+            type: stop.stop_type,
+            address: stop.location_name,
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+          })),
+        });
+      }
+
       onUpdated?.(updated);
       setIsEditing(false);
       toast.success('Shipment updated');
@@ -238,6 +382,18 @@ export default function TripDetail({
     { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
   ];
 
+  const routeStops = [
+    { id: 'origin', label: 'Pickup', value: trip.origin, type: 'pickup' as const, primary: true },
+    ...additionalStops.map((stop) => ({
+      id: stop.id,
+      label: stop.type === 'pickup' ? 'Extra Pickup' : 'Extra Delivery',
+      value: stop.location,
+      type: stop.type,
+      primary: false,
+    })),
+    { id: 'destination', label: 'Delivery', value: trip.destination, type: 'delivery' as const, primary: true },
+  ];
+
   return (
     <div className="card-elevated p-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -260,6 +416,26 @@ export default function TripDetail({
             <span className="font-medium truncate">{r.value}</span>
           </div>
         ))}
+      </div>
+
+      <div className="border-t pt-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Route className="w-4 h-4 text-muted-foreground" />
+          <p className="text-xs font-medium text-muted-foreground">Route Stops</p>
+        </div>
+        <div className="space-y-2">
+          {routeStops.map((stop, index) => (
+            <div key={stop.id} className="flex items-start gap-3 rounded-lg border px-3 py-2">
+              <div className={`mt-0.5 h-2.5 w-2.5 rounded-full ${stop.type === 'pickup' ? 'bg-sky-500' : 'bg-emerald-500'}`} />
+              <div className="min-w-0">
+                <p className="text-xs font-medium">
+                  {index + 1}. {stop.label}{stop.primary ? ' (Primary)' : ''}
+                </p>
+                <p className="text-sm text-muted-foreground break-words">{stop.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="border-t pt-4 space-y-3">
@@ -360,6 +536,69 @@ export default function TripDetail({
                 value={form.planned_arrival}
                 onChange={(e) => set('planned_arrival', e.target.value)}
               />
+            </div>
+            <div className="space-y-3 md:col-span-2 rounded-md border border-dashed p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Additional Stops</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Keep the main origin and destination above. Use these rows for optional intermediate stops.
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddStop}>
+                  + Add Additional Stop
+                </Button>
+              </div>
+
+              {additionalStops.length > 0 && (
+                <div className="space-y-3">
+                  {additionalStops.map((stop, index) => (
+                    <div key={stop.id} className="rounded-md border bg-background p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-medium">Stop {index + 1}</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-muted-foreground"
+                          onClick={() => handleRemoveStop(stop.id)}
+                        >
+                          <Trash2 className="mr-1 h-3.5 w-3.5" />
+                          Remove
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-start">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Stop Type</Label>
+                          <Select
+                            value={stop.type}
+                            onValueChange={(value) => handleStopTypeChange(stop.id, value as TripStopType)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select stop type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pickup">Pickup</SelectItem>
+                              <SelectItem value="delivery">Delivery</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <LocationAutocomplete
+                          id={`trip-detail-stop-${stop.id}`}
+                          label="Stop Location"
+                          placeholder={`Search ${stop.type} stop`}
+                          value={stop.location}
+                          required
+                          onChange={(value) => handleStopLocationChange(stop.id, value)}
+                          onSelect={(location) => handleStopLocationSelect(stop.id, location)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <Button size="sm" onClick={handleSave} disabled={saving}>

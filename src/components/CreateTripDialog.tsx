@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createCompany, createTrip, createTrips, listCompanies, type Company, type Trip } from '@/lib/api';
+import { createCompany, createTrip, createTrips, listCompanies, replaceTripStops, updateTripCreatedEventMetadata, type Company, type Trip } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,13 +20,31 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import LocationAutocomplete from '@/components/LocationAutocomplete';
 
 type SelectedLocation = {
   address: string;
   lat: number;
   lng: number;
+};
+
+type AdditionalStopType = 'pickup' | 'delivery';
+
+type AdditionalStop = {
+  id: string;
+  type: AdditionalStopType;
+  location: string;
+  selectedLocation: SelectedLocation | null;
+};
+
+type RouteStopPayload = {
+  sequence: number;
+  type: AdditionalStopType;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  isPrimary: boolean;
 };
 
 interface Props {
@@ -48,6 +66,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
   const [bulkInput, setBulkInput] = useState('');
   const [pickupLocation, setPickupLocation] = useState<SelectedLocation | null>(null);
   const [dropLocation, setDropLocation] = useState<SelectedLocation | null>(null);
+  const [additionalStops, setAdditionalStops] = useState<AdditionalStop[]>([]);
   const [form, setForm] = useState({
     vehicle_number: '',
     driver_name: '',
@@ -62,6 +81,88 @@ export default function CreateTripDialog({ onCreated }: Props) {
   });
 
   const set = (key: keyof typeof form, val: string) => setForm(f => ({ ...f, [key]: val }));
+
+  const createStopId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+
+    return `stop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  };
+
+  const handleAddStop = () => {
+    setAdditionalStops((current) => [
+      ...current,
+      {
+        id: createStopId(),
+        type: 'pickup',
+        location: '',
+        selectedLocation: null,
+      },
+    ]);
+  };
+
+  const handleRemoveStop = (stopId: string) => {
+    setAdditionalStops((current) => current.filter((stop) => stop.id !== stopId));
+  };
+
+  const handleStopTypeChange = (stopId: string, type: AdditionalStopType) => {
+    setAdditionalStops((current) =>
+      current.map((stop) => (stop.id === stopId ? { ...stop, type } : stop))
+    );
+  };
+
+  const handleStopLocationChange = (stopId: string, location: string) => {
+    setAdditionalStops((current) =>
+      current.map((stop) => (
+        stop.id === stopId
+          ? { ...stop, location, selectedLocation: location.trim() ? stop.selectedLocation : null }
+          : stop
+      ))
+    );
+  };
+
+  const handleStopLocationSelect = (stopId: string, selectedLocation: SelectedLocation | null) => {
+    setAdditionalStops((current) =>
+      current.map((stop) => (stop.id === stopId ? { ...stop, selectedLocation } : stop))
+    );
+  };
+
+  const buildAdditionalStopsPayload = (): RouteStopPayload[] => {
+    const incompleteStop = additionalStops.find((stop) => !stop.location.trim());
+    if (incompleteStop) {
+      throw new Error('Every additional stop must include a location or be removed.');
+    }
+
+    return additionalStops.map((stop, index) => ({
+      sequence: index + 1,
+      type: stop.type,
+      address: stop.location.trim(),
+      latitude: stop.selectedLocation?.lat ?? null,
+      longitude: stop.selectedLocation?.lng ?? null,
+      isPrimary: false,
+    }));
+  };
+
+  const buildRoutePlanPayload = (stops: RouteStopPayload[]): RouteStopPayload[] => [
+    {
+      sequence: 0,
+      type: 'pickup',
+      address: form.origin.trim(),
+      latitude: pickupLocation?.lat ?? null,
+      longitude: pickupLocation?.lng ?? null,
+      isPrimary: true,
+    },
+    ...stops,
+    {
+      sequence: stops.length + 1,
+      type: 'delivery',
+      address: form.destination.trim(),
+      latitude: dropLocation?.lat ?? null,
+      longitude: dropLocation?.lng ?? null,
+      isPrimary: true,
+    },
+  ];
 
   const normalizeOptionalLink = (value: string) => {
     const trimmed = value.trim();
@@ -277,6 +378,8 @@ export default function CreateTripDialog({ onCreated }: Props) {
       }
 
       if (mode === 'single') {
+        const additionalStopsPayload = buildAdditionalStopsPayload();
+        const routePlanPayload = buildRoutePlanPayload(additionalStopsPayload);
         const gpsLink = normalizeOptionalLink(form.gps_tracking_link);
         if (gpsOnlyMode && !gpsLink) {
           throw new Error('GPS-only mode requires a GPS tracking link.');
@@ -293,7 +396,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
           ? (form.driver_phone.trim() || 'N/A')
           : form.driver_phone;
 
-        createdTrip = await createTrip({
+        const tripPayload = {
           user_id: user.id,
           transporter_company_id: profile.company_id,
           company_id: companyId,
@@ -309,7 +412,28 @@ export default function CreateTripDialog({ onCreated }: Props) {
             companies.find((company) => company.id === companyId)?.company_name
             || form.customer_name,
           planned_arrival: new Date(form.planned_arrival).toISOString(),
-        });
+        };
+
+        createdTrip = await createTrip(tripPayload);
+
+        if (additionalStopsPayload.length > 0 && createdTrip) {
+          const stopRows = additionalStopsPayload.map((stop) => ({
+            stop_order: stop.sequence,
+            stop_type: stop.type,
+            location_name: stop.address,
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+          }));
+
+          const savedStops = await replaceTripStops(createdTrip.id, stopRows);
+
+          if (savedStops.length === 0) {
+            await updateTripCreatedEventMetadata(createdTrip.id, {
+              additional_stops: additionalStopsPayload,
+              route_plan: routePlanPayload,
+            });
+          }
+        }
       } else {
         const payload = parseBulkLines(bulkInput, user.id, companyId);
         const createdTrips = await createTrips(payload);
@@ -332,6 +456,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
       setBulkInput('');
       setPickupLocation(null);
       setDropLocation(null);
+      setAdditionalStops([]);
       setGpsOnlyMode(false);
       setOpen(false);
       if (createdTrip) {
@@ -522,16 +647,81 @@ export default function CreateTripDialog({ onCreated }: Props) {
 
                   if (f.key === 'destination') {
                     return (
-                      <LocationAutocomplete
-                        key={f.key}
-                        id="destination"
-                        label="Drop Location"
-                        placeholder="Search drop location"
-                        value={form.destination}
-                        required
-                        onChange={(value) => set('destination', value)}
-                        onSelect={setDropLocation}
-                      />
+                      <div key={f.key} className="space-y-3">
+                        <LocationAutocomplete
+                          id="destination"
+                          label="Drop Location"
+                          placeholder="Search drop location"
+                          value={form.destination}
+                          required
+                          onChange={(value) => set('destination', value)}
+                          onSelect={setDropLocation}
+                        />
+
+                        <div className="space-y-3 rounded-md border border-dashed p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Additional Stops</Label>
+                              <p className="text-[11px] text-muted-foreground">
+                                Add optional intermediate pickup or delivery points only when needed.
+                              </p>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={handleAddStop}>
+                              + Add Additional Stop
+                            </Button>
+                          </div>
+
+                          {additionalStops.length > 0 && (
+                            <div className="space-y-3">
+                              {additionalStops.map((stop, index) => (
+                                <div key={stop.id} className="rounded-md border bg-background p-3 space-y-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs font-medium">Stop {index + 1}</p>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 px-2 text-muted-foreground"
+                                      onClick={() => handleRemoveStop(stop.id)}
+                                    >
+                                      <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                      Remove
+                                    </Button>
+                                  </div>
+
+                                  <div className="grid gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-start">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Stop Type</Label>
+                                      <Select
+                                        value={stop.type}
+                                        onValueChange={(value) => handleStopTypeChange(stop.id, value as AdditionalStopType)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select stop type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="pickup">Pickup</SelectItem>
+                                          <SelectItem value="delivery">Delivery</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <LocationAutocomplete
+                                      id={`additional-stop-${stop.id}`}
+                                      label="Stop Location"
+                                      placeholder={`Search ${stop.type} stop`}
+                                      value={stop.location}
+                                      required
+                                      onChange={(value) => handleStopLocationChange(stop.id, value)}
+                                      onSelect={(location) => handleStopLocationSelect(stop.id, location)}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     );
                   }
 

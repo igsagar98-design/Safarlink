@@ -114,6 +114,28 @@ export interface TripEvent {
   created_at: string;
 }
 
+export type TripStopType = 'pickup' | 'delivery';
+
+export interface TripStop {
+  id: string;
+  trip_id: string;
+  stop_order: number;
+  stop_type: TripStopType;
+  location_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TripStopInput {
+  stop_order: number;
+  stop_type: TripStopType;
+  location_name: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
 export interface RouteProgressInput {
   origin: string;
   destination: string;
@@ -139,6 +161,11 @@ export interface PredictDelayInput {
 function throwSupabaseError(error: { message?: string } | null): never {
   const message = error?.message?.trim() || 'Unknown database error';
   throw new Error(message);
+}
+
+function isMissingTripStopsTable(error: { message?: string } | null): boolean {
+  const message = error?.message?.toLowerCase() || '';
+  return message.includes('trip_stops') && (message.includes('schema cache') || message.includes('does not exist'));
 }
 
 const toLocationName = (latitude: number, longitude: number) =>
@@ -433,6 +460,21 @@ export async function listTripEvents(tripId: string): Promise<TripEvent[]> {
   return (data as TripEvent[]) ?? [];
 }
 
+export async function listTripStops(tripId: string): Promise<TripStop[]> {
+  const { data, error } = await supabase
+    .from('trip_stops')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('stop_order', { ascending: true });
+
+  if (error) {
+    if (isMissingTripStopsTable(error)) return [];
+    throw error;
+  }
+
+  return (data as TripStop[]) ?? [];
+}
+
 export async function postTripEvent(
   tripId: string,
   eventType: TripEventType,
@@ -449,6 +491,75 @@ export async function postTripEvent(
   });
 
   if (error) throw error;
+}
+
+export async function updateTripCreatedEventMetadata(
+  tripId: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('trip_events')
+    .select('id, metadata')
+    .eq('trip_id', tripId)
+    .eq('event_type', 'trip_created')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (!data) {
+    await postTripEvent(tripId, 'trip_created', { metadata });
+    return;
+  }
+
+  const existingMetadata =
+    data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+      ? (data.metadata as Record<string, unknown>)
+      : {};
+
+  const { error: updateError } = await supabase
+    .from('trip_events')
+    .update({ metadata: { ...existingMetadata, ...metadata } as Json })
+    .eq('id', data.id);
+
+  if (updateError) throw updateError;
+}
+
+export async function replaceTripStops(
+  tripId: string,
+  stops: TripStopInput[]
+): Promise<TripStop[]> {
+  const { error: deleteError } = await supabase.from('trip_stops').delete().eq('trip_id', tripId);
+
+  if (deleteError) {
+    if (isMissingTripStopsTable(deleteError)) return [];
+    throw deleteError;
+  }
+
+  if (stops.length === 0) return [];
+
+  const rows = stops.map((stop) => ({
+    trip_id: tripId,
+    stop_order: stop.stop_order,
+    stop_type: stop.stop_type,
+    location_name: stop.location_name,
+    latitude: stop.latitude ?? null,
+    longitude: stop.longitude ?? null,
+  }));
+
+  const { data, error } = await supabase
+    .from('trip_stops')
+    .insert(rows)
+    .select('*')
+    .order('stop_order', { ascending: true });
+
+  if (error) {
+    if (isMissingTripStopsTable(error)) return [];
+    throw error;
+  }
+
+  return (data as TripStop[]) ?? [];
 }
 
 export async function getDriverTripByToken(trackingToken: string): Promise<Trip | null> {
