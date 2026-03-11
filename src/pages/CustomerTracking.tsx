@@ -15,7 +15,9 @@ import { Progress } from '@/components/ui/progress';
 import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
 
-const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const TRACKING_REFRESH_INTERVAL_MS = 5 * 1000;
+const STALE_AFTER_MS = 30 * 1000;
+const OFFLINE_AFTER_MS = 120 * 1000;
 
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
@@ -24,8 +26,38 @@ export default function CustomerTracking() {
   const [events, setEvents] = useState<TripEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastPolledAt, setLastPolledAt] = useState<string | null>(null);
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
+
+  const getLocationHealth = (lastUpdateAt: string | null | undefined) => {
+    if (!lastUpdateAt) {
+      return {
+        label: 'Awaiting first location',
+        className: 'bg-amber-50 text-amber-700 border border-amber-200',
+      };
+    }
+
+    const ageMs = Date.now() - new Date(lastUpdateAt).getTime();
+    if (ageMs >= OFFLINE_AFTER_MS) {
+      return {
+        label: 'Driver offline',
+        className: 'bg-rose-50 text-rose-700 border border-rose-200',
+      };
+    }
+
+    if (ageMs >= STALE_AFTER_MS) {
+      return {
+        label: 'Location stale',
+        className: 'bg-amber-50 text-amber-700 border border-amber-200',
+      };
+    }
+
+    return {
+      label: 'Live location',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  };
 
   const fetchTrip = async () => {
     if (!token) return;
@@ -72,6 +104,7 @@ export default function CustomerTracking() {
       setEvents([]);
     } finally {
       setLoading(false);
+      setLastPolledAt(new Date().toISOString());
     }
   };
 
@@ -140,6 +173,11 @@ export default function CustomerTracking() {
         <div className={`rounded-xl p-4 text-center ${getStatusClass(status)}`}>
           <p className="text-sm font-medium">Current Status</p>
           <p className="text-2xl font-display font-bold">{getStatusLabel(status)}</p>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getLocationHealth(trip.last_update_at).className}`}>
+              {getLocationHealth(trip.last_update_at).label}
+            </span>
+          </div>
         </div>
 
         {typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0 && (
@@ -206,7 +244,9 @@ export default function CustomerTracking() {
           <TripTimeline events={events} />
         </div>
 
-        <p className="text-xs text-center text-muted-foreground">Auto-refreshes every 15 seconds</p>
+        <p className="text-xs text-center text-muted-foreground">
+          Auto-refreshes every 5 seconds{lastPolledAt ? ` • Last sync ${format(new Date(lastPolledAt), 'HH:mm:ss')}` : ''}
+        </p>
       </div>
     </div>
   );

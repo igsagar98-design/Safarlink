@@ -1,5 +1,5 @@
 import { GoogleMap, Marker } from '@react-google-maps/api';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useGoogleMapsLoader } from '@/lib/googleMapsLoader';
 
 const defaultMapContainerStyle = {
@@ -26,12 +26,22 @@ export default function TrackingMap({
   className = '',
   mapContainerStyle = defaultMapContainerStyle,
 }) {
+  const mapRef = useRef(null);
+
   const center = useMemo(() => {
     if (isValidCoordinate(driver)) return driver;
     if (isValidCoordinate(pickup)) return pickup;
     if (isValidCoordinate(drop)) return drop;
     return { lat: 20.5937, lng: 78.9629 };
   }, [driver, pickup, drop]);
+
+  useEffect(() => {
+    if (!mapRef.current || !isValidCoordinate(driver)) {
+      return;
+    }
+
+    mapRef.current.panTo(driver);
+  }, [driver]);
 
   const { isLoaded, loadError, missingApiKey } = useGoogleMapsLoader();
 
@@ -69,6 +79,9 @@ export default function TrackingMap({
         mapContainerStyle={mapContainerStyle}
         center={center}
         zoom={zoom}
+        onLoad={(map) => {
+          mapRef.current = map;
+        }}
         options={{
           streetViewControl: false,
           mapTypeControl: false,

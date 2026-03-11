@@ -22,7 +22,7 @@ import { format } from 'date-fns';
 
 type DriverStatus = Exclude<TripStatus, 'delivered'>;
 
-const LOCATION_PUSH_INTERVAL_MS = 60 * 1000;
+const LOCATION_PUSH_INTERVAL_MS = 10 * 1000;
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
 type PermissionStateLike = 'granted' | 'denied' | 'prompt' | 'unsupported';
 
@@ -35,11 +35,10 @@ export default function DriverTracking() {
   const [locationDenied, setLocationDenied] = useState(false);
   const [lastLocationSentAt, setLastLocationSentAt] = useState<string | null>(null);
   const [locationSendFailed, setLocationSendFailed] = useState(false);
+  const [isSendingLocation, setIsSendingLocation] = useState(false);
   const [geoPermissionState, setGeoPermissionState] = useState<PermissionStateLike>('unsupported');
   const [currentStatus, setCurrentStatus] = useState<DriverStatus>('on_time');
   const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
-  const watchIdRef = useRef<number | null>(null);
-  const lastLocationPushAtRef = useRef<number>(0);
   const openedEventLoggedRef = useRef(false);
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
@@ -95,13 +94,6 @@ export default function DriverTracking() {
     }
   }, [refreshRouteProgress, token]);
 
-  const stopLocationWatch = useCallback(() => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-  }, []);
-
   // Fetch trip by tracking token
   useEffect(() => {
     fetchTrip();
@@ -113,11 +105,11 @@ export default function DriverTracking() {
   const sendLocation = useCallback(async (lat: number, lng: number): Promise<boolean> => {
     if (!trip) return false;
     try {
+      setIsSendingLocation(true);
       await postDriverLocationUpdate(trip.id, lat, lng, { trackingToken: trip.tracking_token });
       setLocationSendFailed(false);
       const sentAt = new Date().toISOString();
       setLastLocationSentAt(sentAt);
-      lastLocationPushAtRef.current = Date.now();
       const nextTrip = {
         ...trip,
         last_latitude: lat,
@@ -132,23 +124,12 @@ export default function DriverTracking() {
       setLocationSendFailed(true);
       toast.error('Failed to send location update');
       return false;
+    } finally {
+      setIsSendingLocation(false);
     }
   }, [refreshRouteProgress, trip]);
 
-  const pushLocationIfDue = useCallback((latitude: number, longitude: number) => {
-    const now = Date.now();
-    const shouldPush =
-      lastLocationPushAtRef.current === 0 ||
-      now - lastLocationPushAtRef.current >= LOCATION_PUSH_INTERVAL_MS;
-
-    if (!shouldPush) {
-      return;
-    }
-
-    void sendLocation(latitude, longitude);
-  }, [sendLocation]);
-
-  const requestCurrentLocation = useCallback((forceImmediateSend: boolean) => {
+  const requestCurrentLocation = useCallback(() => {
     if (!navigator.geolocation) {
       return;
     }
@@ -157,21 +138,18 @@ export default function DriverTracking() {
       (position) => {
         setLocationGranted(true);
         setLocationDenied(false);
-        if (forceImmediateSend) {
-          void sendLocation(position.coords.latitude, position.coords.longitude);
-          return;
-        }
-
-        pushLocationIfDue(position.coords.latitude, position.coords.longitude);
+        void sendLocation(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {
           setGeoPermissionState('denied');
           setLocationDenied(true);
           setLocationGranted(false);
-          stopLocationWatch();
           toast.error('Location permission denied');
+          return;
         }
+
+        setLocationSendFailed(true);
       },
       {
         enableHighAccuracy: true,
@@ -179,46 +157,7 @@ export default function DriverTracking() {
         timeout: 15000,
       }
     );
-  }, [pushLocationIfDue, sendLocation, stopLocationWatch]);
-
-  const startLocationWatch = useCallback(() => {
-    if (!navigator.geolocation) {
-      toast.error('Geolocation not supported');
-      return;
-    }
-
-    if (watchIdRef.current !== null) {
-      return;
-    }
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        setLocationGranted(true);
-        setLocationDenied(false);
-        pushLocationIfDue(position.coords.latitude, position.coords.longitude);
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          setGeoPermissionState('denied');
-          setLocationDenied(true);
-          setLocationGranted(false);
-          stopLocationWatch();
-          toast.error('Location permission denied');
-          return;
-        }
-
-        toast.error('Unable to read location. Keep GPS enabled and keep this tab active.');
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 30000,
-        timeout: 20000,
-      }
-    );
-
-    // Kick off an immediate location push instead of waiting for watch interval callbacks.
-    requestCurrentLocation(true);
-  }, [pushLocationIfDue, requestCurrentLocation, stopLocationWatch]);
+  }, [sendLocation]);
 
   useEffect(() => {
     if (!('permissions' in navigator) || !navigator.permissions?.query) {
@@ -236,11 +175,10 @@ export default function DriverTracking() {
 
       if (state === 'granted') {
         setLocationDenied(false);
-        startLocationWatch();
+        setLocationGranted(true);
       } else if (state === 'denied') {
         setLocationDenied(true);
         setLocationGranted(false);
-        stopLocationWatch();
       }
     };
 
@@ -261,24 +199,18 @@ export default function DriverTracking() {
         permissionStatus.onchange = null;
       }
     };
-  }, [startLocationWatch, stopLocationWatch]);
+  }, []);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (
-        document.visibilityState === 'visible' &&
-        (geoPermissionState === 'granted' || locationGranted) &&
-        watchIdRef.current === null
-      ) {
-        startLocationWatch();
-      }
-    };
+    if (!trip || !locationGranted || locationDenied || trip.status === 'delivered') {
+      return;
+    }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [geoPermissionState, locationGranted, startLocationWatch]);
+    requestCurrentLocation();
+    const interval = setInterval(requestCurrentLocation, LOCATION_PUSH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [locationDenied, locationGranted, requestCurrentLocation, trip]);
 
-  // Request location once; continuous updates are handled by watchPosition.
   const requestLocation = () => {
     if (!navigator.geolocation) {
       toast.error('Geolocation not supported');
@@ -286,35 +218,8 @@ export default function DriverTracking() {
     }
 
     setLocationDenied(false);
-    startLocationWatch();
-    requestCurrentLocation(true);
+    requestCurrentLocation();
   };
-
-  useEffect(() => {
-    if (!trip || !locationGranted || locationDenied || lastLocationSentAt) {
-      return;
-    }
-
-    requestCurrentLocation(true);
-  }, [lastLocationSentAt, locationDenied, locationGranted, requestCurrentLocation, trip]);
-
-  useEffect(() => {
-    if (!trip || !locationGranted || locationDenied || trip.status === 'delivered') {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      requestCurrentLocation(false);
-    }, LOCATION_PUSH_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [locationDenied, locationGranted, requestCurrentLocation, trip]);
-
-  useEffect(() => {
-    return () => {
-      stopLocationWatch();
-    };
-  }, [stopLocationWatch]);
 
   // Update driver status
   const updateStatus = async (status: DriverStatus) => {
@@ -342,7 +247,6 @@ export default function DriverTracking() {
     if (!trip) return;
     try {
       await markTripDelivered(trip.id);
-      stopLocationWatch();
       setTrip({ ...trip, status: 'delivered', is_active: false });
       toast.success('Trip marked as delivered');
     } catch {
@@ -458,7 +362,8 @@ export default function DriverTracking() {
           <div className="card-elevated p-4 text-center">
             <CheckCircle className="w-6 h-6 text-success mx-auto mb-1" />
             <p className="text-sm font-medium">Location sharing active</p>
-            <p className="text-xs text-muted-foreground">Updates sent about every minute</p>
+            <p className="text-xs text-muted-foreground">Updates sent every 10 seconds</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Last sent: {format(new Date(lastLocationSentAt), 'dd MMM, HH:mm:ss')}</p>
           </div>
         )}
 
@@ -474,8 +379,12 @@ export default function DriverTracking() {
           <div className="card-elevated p-4 text-center border-destructive">
             <AlertTriangle className="w-6 h-6 text-destructive mx-auto mb-1" />
             <p className="text-sm font-medium">GPS update failed</p>
-            <p className="text-xs text-muted-foreground">Check network and keep this page active to retry.</p>
+            <p className="text-xs text-muted-foreground">Check network or GPS permissions. Automatic retry continues every 10 seconds.</p>
           </div>
+        )}
+
+        {isSendingLocation && (
+          <p className="text-[11px] text-center text-muted-foreground">Sending latest location...</p>
         )}
 
         {/* Status buttons */}
