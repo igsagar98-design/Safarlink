@@ -9,8 +9,13 @@ interface Props {
 const EVENT_LABELS: Record<string, string> = {
   trip_created: 'Trip created',
   driver_opened_link: 'Driver opened tracking link',
-  location_update: 'Location updated',
-  status_change: 'Status changed',
+  tracking_started: 'Tracking started',
+  tracking_paused: 'Tracking paused',
+  tracking_stopped: 'Tracking stopped',
+  tracking_stale: 'Tracking offline/stale',
+  reached_pickup: 'Reached pickup',
+  in_transit: 'In transit',
+  reached_destination: 'Reached destination',
   arrived: 'Arrived at destination',
   delivered: 'Delivered',
 };

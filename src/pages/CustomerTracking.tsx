@@ -4,6 +4,7 @@ import {
   getCustomerTripByToken,
   getRouteProgress,
   listTripEvents,
+  postTripEvent,
   type RouteProgressResult,
   type TripEvent,
   type Trip,
@@ -19,6 +20,8 @@ const TRACKING_REFRESH_INTERVAL_MS = 5 * 1000;
 const STALE_AFTER_MS = 30 * 1000;
 const OFFLINE_AFTER_MS = 120 * 1000;
 
+type TrackingState = 'live' | 'stale' | 'paused' | 'stopped';
+
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -30,7 +33,38 @@ export default function CustomerTracking() {
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
 
-  const getLocationHealth = (lastUpdateAt: string | null | undefined) => {
+  const getTrackingState = (tripData: Trip, tripEvents: TripEvent[]): TrackingState => {
+    const latestControlEvent = [...tripEvents]
+      .filter((event) => event.event_type === 'tracking_stopped' || event.event_type === 'tracking_paused' || event.event_type === 'tracking_started')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+    if (latestControlEvent?.event_type === 'tracking_stopped') return 'stopped';
+    if (latestControlEvent?.event_type === 'tracking_paused') return 'paused';
+
+    const lastUpdateAt = tripData.last_update_at;
+    if (!lastUpdateAt) return 'stale';
+
+    const ageMs = Date.now() - new Date(lastUpdateAt).getTime();
+    if (ageMs >= OFFLINE_AFTER_MS) return 'stale';
+    if (ageMs >= STALE_AFTER_MS) return 'stale';
+    return 'live';
+  };
+
+  const getLocationHealth = (lastUpdateAt: string | null | undefined, trackingState: TrackingState) => {
+    if (trackingState === 'stopped') {
+      return {
+        label: 'Tracking stopped',
+        className: 'bg-rose-50 text-rose-700 border border-rose-200',
+      };
+    }
+
+    if (trackingState === 'paused') {
+      return {
+        label: 'Tracking paused',
+        className: 'bg-amber-50 text-amber-700 border border-amber-200',
+      };
+    }
+
     if (!lastUpdateAt) {
       return {
         label: 'Awaiting first location',
@@ -75,6 +109,23 @@ export default function CustomerTracking() {
       try {
         const tripEvents = await listTripEvents(data.id);
         setEvents(tripEvents);
+
+        const trackingState = getTrackingState(data, tripEvents);
+        if (trackingState === 'stale' && data.last_update_at) {
+          const hasRecentStaleEvent = tripEvents.some((event) => {
+            if (event.event_type !== 'tracking_stale') return false;
+            const ageMs = Date.now() - new Date(event.created_at).getTime();
+            return ageMs < OFFLINE_AFTER_MS;
+          });
+
+          if (!hasRecentStaleEvent) {
+            postTripEvent(data.id, 'tracking_stale', {
+              note: 'No GPS updates received recently',
+            }).catch(() => {
+              // Non-blocking stale milestone logging.
+            });
+          }
+        }
       } catch {
         setEvents([]);
       }
@@ -130,6 +181,8 @@ export default function CustomerTracking() {
   }
 
   const status = calculateTripStatus(trip);
+  const trackingState = getTrackingState(trip, events);
+  const locationHealth = getLocationHealth(trip.last_update_at, trackingState);
 
   const rows = [
     { icon: Truck, label: 'Vehicle', value: trip.vehicle_number },
@@ -174,8 +227,8 @@ export default function CustomerTracking() {
           <p className="text-sm font-medium">Current Status</p>
           <p className="text-2xl font-display font-bold">{getStatusLabel(status)}</p>
           <div className="mt-2 flex items-center justify-center gap-2">
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getLocationHealth(trip.last_update_at).className}`}>
-              {getLocationHealth(trip.last_update_at).label}
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${locationHealth.className}`}>
+              {locationHealth.label}
             </span>
           </div>
         </div>

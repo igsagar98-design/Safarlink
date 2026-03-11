@@ -40,6 +40,9 @@ export default function DriverTracking() {
   const [currentStatus, setCurrentStatus] = useState<DriverStatus>('on_time');
   const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
   const openedEventLoggedRef = useRef(false);
+  const trackingStartedLoggedRef = useRef(false);
+  const trackingPausedLoggedRef = useRef(false);
+  const trackingStoppedLoggedRef = useRef(false);
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
 
@@ -119,6 +122,22 @@ export default function DriverTracking() {
       };
       setTrip(nextTrip);
       await refreshRouteProgress(nextTrip);
+
+      if (!trackingStartedLoggedRef.current) {
+        trackingStartedLoggedRef.current = true;
+        trackingPausedLoggedRef.current = false;
+        postTripEvent(trip.id, 'tracking_started', {
+          note: 'Driver started live GPS tracking',
+        }).catch(() => {
+          // Non-blocking milestone logging.
+        });
+        postTripEvent(trip.id, 'in_transit', {
+          note: 'Trip is in transit',
+        }).catch(() => {
+          // Non-blocking milestone logging.
+        });
+      }
+
       return true;
     } catch {
       setLocationSendFailed(true);
@@ -179,6 +198,15 @@ export default function DriverTracking() {
       } else if (state === 'denied') {
         setLocationDenied(true);
         setLocationGranted(false);
+
+        if (trip && trackingStartedLoggedRef.current && !trackingStoppedLoggedRef.current) {
+          trackingStoppedLoggedRef.current = true;
+          postTripEvent(trip.id, 'tracking_stopped', {
+            note: 'Tracking stopped: location permission denied',
+          }).catch(() => {
+            // Non-blocking milestone logging.
+          });
+        }
       }
     };
 
@@ -199,7 +227,52 @@ export default function DriverTracking() {
         permissionStatus.onchange = null;
       }
     };
-  }, []);
+  }, [trip]);
+
+  useEffect(() => {
+    if (!trip) return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && trackingStartedLoggedRef.current && !trackingPausedLoggedRef.current) {
+        trackingPausedLoggedRef.current = true;
+        postTripEvent(trip.id, 'tracking_paused', {
+          note: 'Tracking paused: app moved to background',
+        }).catch(() => {
+          // Non-blocking milestone logging.
+        });
+        return;
+      }
+
+      if (document.visibilityState === 'visible' && trackingPausedLoggedRef.current) {
+        trackingPausedLoggedRef.current = false;
+        postTripEvent(trip.id, 'tracking_started', {
+          note: 'Tracking resumed: app active again',
+        }).catch(() => {
+          // Non-blocking milestone logging.
+        });
+      }
+    };
+
+    const onPageHide = () => {
+      if (!trackingStartedLoggedRef.current || trackingStoppedLoggedRef.current) return;
+      trackingStoppedLoggedRef.current = true;
+      postTripEvent(trip.id, 'tracking_stopped', {
+        note: 'Tracking stopped: driver page closed',
+      }).catch(() => {
+        // Non-blocking milestone logging.
+      });
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onPageHide);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onPageHide);
+    };
+  }, [trip]);
 
   useEffect(() => {
     if (!trip || !locationGranted || locationDenied || trip.status === 'delivered') {
@@ -236,6 +309,9 @@ export default function DriverTracking() {
   const handleArrived = async () => {
     if (!trip) return;
     try {
+      await postTripEvent(trip.id, 'reached_destination', {
+        note: 'Driver reached destination',
+      });
       await markTripArrived(trip.id);
       toast.success('Arrival recorded');
     } catch {
@@ -243,10 +319,28 @@ export default function DriverTracking() {
     }
   };
 
+  const handleReachedPickup = async () => {
+    if (!trip) return;
+    try {
+      await postTripEvent(trip.id, 'reached_pickup', {
+        note: 'Driver reached pickup location',
+      });
+      toast.success('Pickup milestone recorded');
+    } catch {
+      toast.error('Failed to record pickup milestone');
+    }
+  };
+
   const handleDelivered = async () => {
     if (!trip) return;
     try {
       await markTripDelivered(trip.id);
+      if (!trackingStoppedLoggedRef.current) {
+        trackingStoppedLoggedRef.current = true;
+        await postTripEvent(trip.id, 'tracking_stopped', {
+          note: 'Tracking stopped after delivery',
+        });
+      }
       setTrip({ ...trip, status: 'delivered', is_active: false });
       toast.success('Trip marked as delivered');
     } catch {
@@ -367,6 +461,15 @@ export default function DriverTracking() {
           </div>
         )}
 
+        <div className="card-elevated p-3 border-warning/30 bg-warning/10">
+          <p className="text-xs text-warning font-medium">
+            Keep this page open and screen active for continuous live tracking.
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Browser-based tracking is not reliable in background mode; tracking will degrade gracefully to paused/stale.
+          </p>
+        </div>
+
         {locationGranted && !lastLocationSentAt && !locationDenied && (
           <div className="card-elevated p-4 text-center">
             <Navigation className="w-6 h-6 text-primary mx-auto mb-1" />
@@ -423,7 +526,10 @@ export default function DriverTracking() {
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Trip Actions</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <Button variant="outline" size="sm" onClick={handleReachedPickup} disabled={trip.status === 'delivered'}>
+              Reached Pickup
+            </Button>
             <Button variant="outline" size="sm" onClick={handleArrived} disabled={trip.status === 'delivered'}>
               Arrived at Destination
             </Button>

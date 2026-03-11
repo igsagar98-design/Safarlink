@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { Enums, Tables } from '@/integrations/supabase/types';
+import type { Enums, Tables, Json } from '@/integrations/supabase/types';
 import type {
   AuthChangeEvent,
   AuthError,
@@ -12,8 +12,13 @@ export type AccountType = 'transporter' | 'company';
 export type TripEventType =
   | 'trip_created'
   | 'driver_opened_link'
-  | 'location_update'
-  | 'status_change'
+  | 'tracking_started'
+  | 'tracking_paused'
+  | 'tracking_stopped'
+  | 'tracking_stale'
+  | 'reached_pickup'
+  | 'in_transit'
+  | 'reached_destination'
   | 'arrived'
   | 'delivered';
 
@@ -440,7 +445,7 @@ export async function postTripEvent(
     trip_id: tripId,
     event_type: eventType,
     note: options?.note ?? null,
-    metadata: options?.metadata ?? {},
+    metadata: (options?.metadata ?? {}) as Json,
   });
 
   if (error) throw error;
