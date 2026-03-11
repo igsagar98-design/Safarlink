@@ -164,9 +164,10 @@ export default function CompanyDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card border-b">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AppLogo className="h-8 w-auto" alt="Safarlink Company Portal" />
+            <AppLogo className="h-12 w-auto" alt="Safarlink Company Portal" />
+            <span className="font-display font-bold text-base text-primary">Safarlink</span>
             <AppLogoFallback label="Safarlink Company Portal" />
           </div>
 
