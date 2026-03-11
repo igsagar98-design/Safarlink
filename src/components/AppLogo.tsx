@@ -1,4 +1,5 @@
 import { Truck } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 interface AppLogoProps {
   className?: string;
@@ -11,12 +12,23 @@ export default function AppLogo({
   imageClassName = '',
   alt = 'Safarlink',
 }: AppLogoProps) {
+  const sources = useMemo(
+    () => ['/safarlink-logo.png', '/safarlink-logo.jpg', '/safarlink-logo.jpeg', '/safarlink-logo.svg', '/logo.png'],
+    []
+  );
+  const [sourceIndex, setSourceIndex] = useState(0);
+
   return (
     <img
-      src="/safarlink-logo.png"
+      src={sources[sourceIndex]}
       alt={alt}
       className={`${className} ${imageClassName}`.trim()}
       onError={(event) => {
+        if (sourceIndex < sources.length - 1) {
+          setSourceIndex((value) => value + 1);
+          return;
+        }
+
         const target = event.currentTarget;
         target.style.display = 'none';
         const fallback = target.nextElementSibling as HTMLElement | null;
