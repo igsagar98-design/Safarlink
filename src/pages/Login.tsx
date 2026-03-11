@@ -4,8 +4,8 @@ import { getMyProfile, getSession, signIn } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import AppLogo, { AppLogoFallback } from '@/components/AppLogo';
 import { toast } from 'sonner';
-import { Truck } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -37,10 +37,10 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary mb-4">
-            <Truck className="w-6 h-6 text-primary-foreground" />
+          <div className="flex justify-center mb-4">
+            <AppLogo className="h-20 w-auto" alt="Safarlink" />
+            <AppLogoFallback label="Safarlink" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-foreground">Safarlink</h1>
           <p className="text-muted-foreground mt-1 text-sm">Shipment visibility for small transporters</p>
         </div>
 

@@ -5,6 +5,7 @@ import { listMyCompanyTrips } from '@/lib/api';
 import { calculateTripStatus } from '@/lib/risk-logic';
 import type { Trip } from '@/components/TripCard';
 import TripDetail from '@/components/TripDetail';
+import AppLogo, { AppLogoFallback } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -165,10 +166,8 @@ export default function CompanyDashboard() {
       <header className="sticky top-0 z-10 bg-card border-b">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-display font-bold text-sm">Safarlink Company Portal</span>
+            <AppLogo className="h-8 w-auto" alt="Safarlink Company Portal" />
+            <AppLogoFallback label="Safarlink Company Portal" />
           </div>
 
           <div className="flex items-center gap-2">

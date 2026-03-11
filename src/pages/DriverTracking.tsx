@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import TrackingMap from '@/components/TrackingMap';
+import AppLogo, { AppLogoFallback } from '@/components/AppLogo';
 import { toast } from 'sonner';
 import { MapPin, Navigation, Package, Clock, AlertTriangle, XCircle, CheckCircle, Truck } from 'lucide-react';
 import { format } from 'date-fns';
@@ -369,10 +370,10 @@ export default function DriverTracking() {
       <div className="max-w-sm mx-auto space-y-4">
         {/* Header */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-primary mb-2">
-            <Truck className="w-5 h-5 text-primary-foreground" />
+          <div className="flex justify-center mb-2">
+            <AppLogo className="h-12 w-auto" alt="Safarlink" />
+            <AppLogoFallback label="Safarlink" />
           </div>
-          <h1 className="font-display font-bold text-lg">Safarlink</h1>
           <p className="text-xs text-muted-foreground">Driver Tracking</p>
         </div>
 
