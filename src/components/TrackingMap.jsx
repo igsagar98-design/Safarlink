@@ -1,5 +1,6 @@
-import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
+import { GoogleMap, Marker } from '@react-google-maps/api';
 import { useMemo } from 'react';
+import { useGoogleMapsLoader } from '@/lib/googleMapsLoader';
 
 const defaultMapContainerStyle = {
   width: '100%',
@@ -25,10 +26,6 @@ export default function TrackingMap({
   className = '',
   mapContainerStyle = defaultMapContainerStyle,
 }) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-
-  const missingApiKey = !apiKey || !String(apiKey).trim();
-
   const center = useMemo(() => {
     if (isValidCoordinate(driver)) return driver;
     if (isValidCoordinate(pickup)) return pickup;
@@ -36,10 +33,7 @@ export default function TrackingMap({
     return { lat: 20.5937, lng: 78.9629 };
   }, [driver, pickup, drop]);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: 'safarlink-google-map',
-    googleMapsApiKey: missingApiKey ? '' : apiKey,
-  });
+  const { isLoaded, loadError, missingApiKey } = useGoogleMapsLoader();
 
   if (missingApiKey) {
     return (

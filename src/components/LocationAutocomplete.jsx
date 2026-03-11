@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useJsApiLoader } from '@react-google-maps/api';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-const libraries = ['places'];
+import { useGoogleMapsLoader } from '@/lib/googleMapsLoader';
 
 export default function LocationAutocomplete({
   id,
@@ -14,7 +12,6 @@ export default function LocationAutocomplete({
   onChange,
   onSelect,
 }) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const [query, setQuery] = useState(value || '');
   const [predictions, setPredictions] = useState([]);
   const [open, setOpen] = useState(false);
@@ -22,13 +19,7 @@ export default function LocationAutocomplete({
   const containerRef = useRef(null);
   const serviceRef = useRef(null);
 
-  const missingApiKey = !apiKey || !String(apiKey).trim();
-
-  const { isLoaded } = useJsApiLoader({
-    id: 'safarlink-places-autocomplete',
-    googleMapsApiKey: missingApiKey ? '' : apiKey,
-    libraries,
-  });
+  const { isLoaded, missingApiKey } = useGoogleMapsLoader();
 
   useEffect(() => {
     setQuery(value || '');
