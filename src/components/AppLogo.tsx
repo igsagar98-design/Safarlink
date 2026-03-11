@@ -9,7 +9,7 @@ interface AppLogoProps {
 
 export default function AppLogo({
   className = 'h-10 w-auto',
-  imageClassName = '',
+  imageClassName = 'object-contain mix-blend-multiply',
   alt = 'Safarlink',
 }: AppLogoProps) {
   const sources = useMemo(
