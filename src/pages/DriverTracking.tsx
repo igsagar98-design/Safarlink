@@ -569,7 +569,7 @@ export default function DriverTracking() {
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Trip Actions</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="flex flex-col gap-2">
             <Button variant="outline" size="sm" onClick={handleReachedPickup} disabled={trip.status === 'delivered'}>
               Reached Pickup
             </Button>
