@@ -21,6 +21,7 @@ import { MapPin, Navigation, Package, Clock, AlertTriangle, XCircle, CheckCircle
 import { format } from 'date-fns';
 
 type DriverStatus = Exclude<TripStatus, 'delivered'>;
+type TripActionSelection = 'reached_pickup' | 'arrived_destination' | 'delivered' | null;
 
 const LOCATION_PUSH_INTERVAL_MS = 30 * 1000;
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
@@ -43,6 +44,7 @@ export default function DriverTracking() {
   const [isTrackingActive, setIsTrackingActive] = useState(false);
   const [geoPermissionState, setGeoPermissionState] = useState<PermissionStateLike>('unsupported');
   const [currentStatus, setCurrentStatus] = useState<DriverStatus>('on_time');
+  const [selectedTripAction, setSelectedTripAction] = useState<TripActionSelection>(null);
   const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
   const openedEventLoggedRef = useRef(false);
   const trackingStartedLoggedRef = useRef(false);
@@ -87,6 +89,7 @@ export default function DriverTracking() {
 
       setTrip(data);
       setCurrentStatus(data.status === 'late' ? 'late' : data.status === 'at_risk' ? 'at_risk' : 'on_time');
+      setSelectedTripAction(data.status === 'delivered' ? 'delivered' : null);
       setError('');
       await refreshRouteProgress(data);
 
@@ -349,6 +352,7 @@ export default function DriverTracking() {
         note: 'Driver reached destination',
       });
       await markTripArrived(trip.id);
+      setSelectedTripAction('arrived_destination');
       toast.success('Arrival recorded');
     } catch {
       toast.error('Failed to record arrival');
@@ -361,6 +365,7 @@ export default function DriverTracking() {
       await postTripEvent(trip.id, 'reached_pickup', {
         note: 'Driver reached pickup location',
       });
+      setSelectedTripAction('reached_pickup');
       toast.success('Pickup milestone recorded');
     } catch {
       toast.error('Failed to record pickup milestone');
@@ -377,6 +382,7 @@ export default function DriverTracking() {
           note: 'Tracking stopped after delivery',
         });
       }
+      setSelectedTripAction('delivered');
       setTrip({ ...trip, status: 'delivered', is_active: false });
       toast.success('Trip marked as delivered');
     } catch {
@@ -570,13 +576,28 @@ export default function DriverTracking() {
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Trip Actions</p>
           <div className="flex flex-col gap-2">
-            <Button variant="outline" size="sm" onClick={handleReachedPickup} disabled={trip.status === 'delivered'}>
+            <Button
+              variant={selectedTripAction === 'reached_pickup' ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleReachedPickup}
+              disabled={trip.status === 'delivered'}
+            >
               Reached Pickup
             </Button>
-            <Button variant="outline" size="sm" onClick={handleArrived} disabled={trip.status === 'delivered'}>
+            <Button
+              variant={selectedTripAction === 'arrived_destination' ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleArrived}
+              disabled={trip.status === 'delivered'}
+            >
               Arrived at Destination
             </Button>
-            <Button size="sm" onClick={handleDelivered} disabled={trip.status === 'delivered'}>
+            <Button
+              variant={selectedTripAction === 'delivered' || trip.status === 'delivered' ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleDelivered}
+              disabled={trip.status === 'delivered'}
+            >
               Delivered
             </Button>
           </div>
