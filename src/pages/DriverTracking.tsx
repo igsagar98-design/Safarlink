@@ -22,7 +22,7 @@ import { format } from 'date-fns';
 
 type DriverStatus = Exclude<TripStatus, 'delivered'>;
 
-const LOCATION_PUSH_INTERVAL_MS = 10 * 1000;
+const LOCATION_PUSH_INTERVAL_MS = 30 * 1000;
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
 type PermissionStateLike = 'granted' | 'denied' | 'prompt' | 'unsupported';
 
@@ -456,7 +456,7 @@ export default function DriverTracking() {
           <div className="card-elevated p-4 text-center">
             <CheckCircle className="w-6 h-6 text-success mx-auto mb-1" />
             <p className="text-sm font-medium">Location sharing active</p>
-            <p className="text-xs text-muted-foreground">Updates sent every 10 seconds</p>
+            <p className="text-xs text-muted-foreground">Updates sent every 30 seconds</p>
             <p className="text-[11px] text-muted-foreground mt-1">Last sent: {format(new Date(lastLocationSentAt), 'dd MMM, HH:mm:ss')}</p>
           </div>
         )}
@@ -482,7 +482,7 @@ export default function DriverTracking() {
           <div className="card-elevated p-4 text-center border-destructive">
             <AlertTriangle className="w-6 h-6 text-destructive mx-auto mb-1" />
             <p className="text-sm font-medium">GPS update failed</p>
-            <p className="text-xs text-muted-foreground">Check network or GPS permissions. Automatic retry continues every 10 seconds.</p>
+            <p className="text-xs text-muted-foreground">Check network or GPS permissions. Automatic retry continues every 30 seconds.</p>
           </div>
         )}
 

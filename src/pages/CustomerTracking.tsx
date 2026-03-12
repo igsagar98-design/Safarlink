@@ -16,9 +16,9 @@ import { Progress } from '@/components/ui/progress';
 import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
 
-const TRACKING_REFRESH_INTERVAL_MS = 5 * 1000;
-const STALE_AFTER_MS = 30 * 1000;
-const OFFLINE_AFTER_MS = 120 * 1000;
+const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const STALE_AFTER_MS = 90 * 1000;
+const OFFLINE_AFTER_MS = 180 * 1000;
 
 type TrackingState = 'live' | 'stale' | 'paused' | 'stopped';
 
@@ -115,7 +115,7 @@ export default function CustomerTracking() {
           const hasRecentStaleEvent = tripEvents.some((event) => {
             if (event.event_type !== 'tracking_stale') return false;
             const ageMs = Date.now() - new Date(event.created_at).getTime();
-            return ageMs < OFFLINE_AFTER_MS;
+            return ageMs < STALE_AFTER_MS;
           });
 
           if (!hasRecentStaleEvent) {
@@ -298,7 +298,7 @@ export default function CustomerTracking() {
         </div>
 
         <p className="text-xs text-center text-muted-foreground">
-          Auto-refreshes every 5 seconds{lastPolledAt ? ` • Last sync ${format(new Date(lastPolledAt), 'HH:mm:ss')}` : ''}
+          Auto-refreshes every 15 seconds{lastPolledAt ? ` • Last sync ${format(new Date(lastPolledAt), 'HH:mm:ss')}` : ''}
         </p>
       </div>
     </div>

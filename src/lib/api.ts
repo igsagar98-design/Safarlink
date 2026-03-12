@@ -592,13 +592,13 @@ export async function postDriverLocationUpdate(
   longitude: number,
   options?: { trackingToken?: string }
 ): Promise<void> {
-  const locationName = toLocationName(latitude, longitude);
-
-  const { error: locationError } = await supabase.from('trip_location_updates').insert({
-    trip_id: tripId,
-    latitude,
-    longitude,
-    location_name: locationName,
+  const { error: locationError } = await supabase.functions.invoke('driver-location-update', {
+    body: {
+      tripId,
+      currentLatitude: latitude,
+      currentLongitude: longitude,
+      trackingToken: options?.trackingToken,
+    },
   });
   if (locationError) throw locationError;
 
