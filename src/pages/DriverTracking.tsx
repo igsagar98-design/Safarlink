@@ -48,6 +48,9 @@ export default function DriverTracking() {
   const trackingStartedLoggedRef = useRef(false);
   const trackingPausedLoggedRef = useRef(false);
   const trackingStoppedLoggedRef = useRef(false);
+  // Always holds the latest requestCurrentLocation without being a reactive dep.
+  // This lets the GPS interval run stably without restarting on every trip update.
+  const requestCurrentLocationRef = useRef<() => void>(() => {});
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
 
@@ -183,6 +186,11 @@ export default function DriverTracking() {
     );
   }, [sendLocation]);
 
+  // Keep the ref in sync with the latest callback.
+  useEffect(() => {
+    requestCurrentLocationRef.current = requestCurrentLocation;
+  }, [requestCurrentLocation]);
+
   useEffect(() => {
     if (!('permissions' in navigator) || !navigator.permissions?.query) {
       setGeoPermissionState('unsupported');
@@ -280,15 +288,19 @@ export default function DriverTracking() {
   }, [trip]);
 
   // GPS interval — only runs after the user explicitly clicks Start Tracking.
-  // The first GPS shot is fired directly inside startTracking() so the browser
-  // sees it as a user-gesture-triggered call, not a background effect.
+  // Uses requestCurrentLocationRef so the interval is NEVER restarted by trip
+  // state updates (which previously reset the 30s clock after every ping).
+  // Only restarts when tracking is toggled, permission is revoked, or trip changes.
   useEffect(() => {
-    if (!trip || !isTrackingActive || locationDenied || trip.status === 'delivered') {
+    if (!isTrackingActive || locationDenied || !trip || trip.status === 'delivered') {
       return;
     }
-    const interval = setInterval(requestCurrentLocation, LOCATION_PUSH_INTERVAL_MS);
+    const interval = setInterval(() => {
+      requestCurrentLocationRef.current();
+    }, LOCATION_PUSH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isTrackingActive, locationDenied, requestCurrentLocation, trip]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTrackingActive, locationDenied, trip?.id, trip?.status]);
 
   // startTracking — called directly by the "Start Tracking" button click.
   // Calling getCurrentPosition here (via requestCurrentLocation) counts as a
