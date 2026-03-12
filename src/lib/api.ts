@@ -592,6 +592,8 @@ export async function postDriverLocationUpdate(
   longitude: number,
   options?: { trackingToken?: string }
 ): Promise<void> {
+  const locationName = toLocationName(latitude, longitude);
+
   const { error: locationError } = await supabase.functions.invoke('driver-location-update', {
     body: {
       tripId,
@@ -600,7 +602,18 @@ export async function postDriverLocationUpdate(
       trackingToken: options?.trackingToken,
     },
   });
-  if (locationError) throw locationError;
+
+  if (locationError) {
+    // Fallback for environments where the edge function is not yet deployed.
+    // Existing DB trigger syncs latest coordinates onto trips for shared tracking links.
+    const { error: fallbackError } = await supabase.from('trip_location_updates').insert({
+      trip_id: tripId,
+      latitude,
+      longitude,
+      location_name: locationName,
+    });
+    if (fallbackError) throw fallbackError;
+  }
 
   // Non-blocking automatic prediction update.
   predictTripDelay({
