@@ -11,8 +11,9 @@ import {
 } from '@/lib/api';
 import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
 import { format } from 'date-fns';
-import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation } from 'lucide-react';
+import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation, ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
 
@@ -21,6 +22,13 @@ const STALE_AFTER_MS = 90 * 1000;
 const OFFLINE_AFTER_MS = 180 * 1000;
 
 type TrackingState = 'live' | 'stale' | 'paused' | 'stopped';
+type TrackingMode = 'driver_link' | 'external_gps_link';
+
+const hasCoordinatePair = (latitude: number | null | undefined, longitude: number | null | undefined) =>
+  typeof latitude === 'number' && typeof longitude === 'number';
+
+const getTrackingMode = (tripData: Trip): TrackingMode =>
+  tripData.gps_tracking_link ? 'external_gps_link' : 'driver_link';
 
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
@@ -50,7 +58,13 @@ export default function CustomerTracking() {
     return 'live';
   };
 
-  const getLocationHealth = (lastUpdateAt: string | null | undefined, trackingState: TrackingState) => {
+  const getLocationHealth = (
+    tripData: Trip,
+    trackingState: TrackingState,
+    trackingMode: TrackingMode,
+  ) => {
+    const hasDriverCoordinates = hasCoordinatePair(tripData.last_latitude, tripData.last_longitude);
+
     if (trackingState === 'stopped') {
       return {
         label: 'Tracking stopped',
@@ -65,14 +79,28 @@ export default function CustomerTracking() {
       };
     }
 
-    if (!lastUpdateAt) {
+    if (trackingMode === 'external_gps_link' && tripData.gps_tracking_link && !hasDriverCoordinates) {
       return {
-        label: 'Awaiting first location',
+        label: 'External GPS link connected',
+        className: 'bg-sky-50 text-sky-700 border border-sky-200',
+      };
+    }
+
+    if (!hasDriverCoordinates) {
+      return {
+        label: 'Awaiting first driver location',
         className: 'bg-amber-50 text-amber-700 border border-amber-200',
       };
     }
 
-    const ageMs = Date.now() - new Date(lastUpdateAt).getTime();
+    if (!tripData.last_update_at) {
+      return {
+        label: 'Live location',
+        className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+      };
+    }
+
+    const ageMs = Date.now() - new Date(tripData.last_update_at).getTime();
     if (ageMs >= OFFLINE_AFTER_MS) {
       return {
         label: 'Driver offline',
@@ -182,7 +210,11 @@ export default function CustomerTracking() {
 
   const status = calculateTripStatus(trip);
   const trackingState = getTrackingState(trip, events);
-  const locationHealth = getLocationHealth(trip.last_update_at, trackingState);
+  const trackingMode = getTrackingMode(trip);
+  const hasDriverCoordinates = hasCoordinatePair(trip.last_latitude, trip.last_longitude);
+  const shouldShowExternalTrackingLink =
+    trackingMode === 'external_gps_link' && Boolean(trip.gps_tracking_link) && !hasDriverCoordinates;
+  const locationHealth = getLocationHealth(trip, trackingState, trackingMode);
 
   const rows = [
     { icon: Truck, label: 'Vehicle', value: trip.vehicle_number },
@@ -206,7 +238,15 @@ export default function CustomerTracking() {
           ? `${trip.delay_minutes} min delayed`
           : 'No delay predicted',
     },
-    { icon: MapPin, label: 'Last Location', value: trip.last_location_name || 'Awaiting update' },
+    {
+      icon: MapPin,
+      label: 'Last Location',
+      value: hasDriverCoordinates
+        ? (trip.last_location_name || 'Live marker shown on map')
+        : (trackingMode === 'external_gps_link'
+            ? 'Live tracking available via GPS link'
+            : 'Awaiting first driver location'),
+    },
     { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
   ];
 
@@ -253,13 +293,27 @@ export default function CustomerTracking() {
               : null
           }
           driver={
-            typeof trip.last_latitude === 'number' && typeof trip.last_longitude === 'number'
+            hasDriverCoordinates
               ? { lat: trip.last_latitude, lng: trip.last_longitude }
               : null
           }
           zoom={10}
           className="h-64"
         />
+
+        {shouldShowExternalTrackingLink && trip.gps_tracking_link && (
+          <div className="card-elevated p-4 space-y-2">
+            <p className="text-sm font-medium">Live tracking available via GPS link</p>
+            <p className="text-xs text-muted-foreground">
+              External GPS provider is connected for this shipment. Open the provider link to view real-time movement.
+            </p>
+            <a href={trip.gps_tracking_link} target="_blank" rel="noopener noreferrer" className="inline-flex">
+              <Button variant="outline" size="sm" className="text-xs">
+                <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open Live Tracking
+              </Button>
+            </a>
+          </div>
+        )}
 
         {/* Progress */}
         <div className="card-elevated p-4 space-y-2">
