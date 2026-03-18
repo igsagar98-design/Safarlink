@@ -7,18 +7,32 @@ type DriverLocationUpdateRequest = {
   trackingToken?: string;
 };
 
+// ---------------------------------------------------------------------------
+// CORS
+// Allow requests from your production domain. Every single response —
+// including OPTIONS preflight, error, and success — must carry these headers.
+// ---------------------------------------------------------------------------
+const ALLOWED_ORIGIN = 'https://www.safarlink.in';
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Vary': 'Origin',
 };
 
 const toLocationName = (latitude: number, longitude: number) =>
   `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 
 Deno.serve(async (req) => {
+  // ------------------------------------------------------------------
+  // Step 1 — Handle preflight (OPTIONS) immediately, before any logic.
+  // The browser sends this before every cross-origin POST request.
+  // If this doesn't return 200 with CORS headers, the real request
+  // is never sent and you'll see "ERR_FAILED / no CORS header" errors.
+  // ------------------------------------------------------------------
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
@@ -28,6 +42,10 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ------------------------------------------------------------------
+  // Step 2 — Main business logic wrapped in try/catch so that errors
+  // always produce a response with CORS headers (never a bare 500).
+  // ------------------------------------------------------------------
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -49,6 +67,10 @@ Deno.serve(async (req) => {
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
+    // ----------------------------------------------------------------
+    // YOUR GPS UPDATE LOGIC LIVES HERE — paste any custom logic below.
+    // ----------------------------------------------------------------
 
     const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
@@ -81,6 +103,8 @@ Deno.serve(async (req) => {
     const lastUpdateAt = new Date().toISOString();
     const locationName = toLocationName(body.currentLatitude, body.currentLongitude);
 
+    // Overwrite latest coordinates only. No timeline event is written here —
+    // GPS location pings must never pollute the trip timeline.
     const { error: updateError } = await supabaseAdmin
       .from('trips')
       .update({
@@ -92,6 +116,10 @@ Deno.serve(async (req) => {
       .eq('id', trip.id);
 
     if (updateError) throw updateError;
+
+    // ----------------------------------------------------------------
+    // End of GPS update logic.
+    // ----------------------------------------------------------------
 
     return new Response(
       JSON.stringify({
@@ -108,6 +136,8 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
+    // Always return CORS headers on errors so the browser doesn't mask
+    // the real failure with a generic "no CORS header" message.
     const message = error instanceof Error ? error.message : 'Unexpected error';
     return new Response(JSON.stringify({ error: message }), {
       status: 500,

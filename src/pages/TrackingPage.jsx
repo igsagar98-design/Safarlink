@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import TrackingMap from '@/components/TrackingMap';
 import { getCustomerTripByToken, getDriverTripByToken } from '@/lib/api';
 import { supabase } from '@/integrations/supabase/client';
+import { ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 function parseLatLngText(value) {
   if (!value || typeof value !== 'string') return null;
@@ -110,6 +112,18 @@ export default function TrackingPage() {
     return { lat: trip.last_latitude, lng: trip.last_longitude };
   }, [trip]);
 
+  const trackingMode = useMemo(() => {
+    if (!trip) return 'driver_link';
+    return trip.gps_tracking_link ? 'external_gps_link' : 'driver_link';
+  }, [trip]);
+
+  const showExternalLinkOnly = Boolean(
+    trip
+    && trackingMode === 'external_gps_link'
+    && trip.gps_tracking_link
+    && !driver
+  );
+
   return (
     <div className="min-h-screen bg-background px-4 py-6">
       <div className="max-w-6xl mx-auto space-y-4">
@@ -160,9 +174,18 @@ export default function TrackingPage() {
                 </p>
                 <p>
                   <span className="font-medium text-foreground">Driver:</span>{' '}
-                  {driver ? `${driver.lat}, ${driver.lng}` : 'No live driver location yet'}
+                  {driver
+                    ? `${driver.lat}, ${driver.lng}`
+                    : (showExternalLinkOnly ? 'Live tracking available via GPS link' : 'Awaiting first driver location')}
                 </p>
               </div>
+              {showExternalLinkOnly && (
+                <a href={trip.gps_tracking_link} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                  <Button variant="outline" size="sm" className="text-xs">
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open Live Tracking
+                  </Button>
+                </a>
+              )}
               <p className="text-xs text-muted-foreground">
                 You can pass `?driverToken=...` or `?customerToken=...` in URL to load a specific trip.
               </p>

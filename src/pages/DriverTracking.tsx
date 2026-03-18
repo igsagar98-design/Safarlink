@@ -21,6 +21,7 @@ import { MapPin, Navigation, Package, Clock, AlertTriangle, XCircle, CheckCircle
 import { format } from 'date-fns';
 
 type DriverStatus = Exclude<TripStatus, 'delivered'>;
+type TripActionSelection = 'reached_pickup' | 'arrived_destination' | 'delivered' | null;
 
 const LOCATION_PUSH_INTERVAL_MS = 30 * 1000;
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
@@ -34,15 +35,24 @@ export default function DriverTracking() {
   const [locationGranted, setLocationGranted] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
   const [lastLocationSentAt, setLastLocationSentAt] = useState<string | null>(null);
-  const [locationSendFailed, setLocationSendFailed] = useState(false);
+  const [locationAccessFailed, setLocationAccessFailed] = useState(false);
+  const [locationUpdateDelayed, setLocationUpdateDelayed] = useState(false);
   const [isSendingLocation, setIsSendingLocation] = useState(false);
+  // isTrackingActive is ONLY set to true via a user gesture (button click).
+  // This prevents the browser warning "Only request geolocation in response to a user gesture"
+  // that fires when getCurrentPosition is called from a useEffect without user interaction.
+  const [isTrackingActive, setIsTrackingActive] = useState(false);
   const [geoPermissionState, setGeoPermissionState] = useState<PermissionStateLike>('unsupported');
   const [currentStatus, setCurrentStatus] = useState<DriverStatus>('on_time');
+  const [selectedTripAction, setSelectedTripAction] = useState<TripActionSelection>(null);
   const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
   const openedEventLoggedRef = useRef(false);
   const trackingStartedLoggedRef = useRef(false);
   const trackingPausedLoggedRef = useRef(false);
   const trackingStoppedLoggedRef = useRef(false);
+  // Always holds the latest requestCurrentLocation without being a reactive dep.
+  // This lets the GPS interval run stably without restarting on every trip update.
+  const requestCurrentLocationRef = useRef<() => void>(() => {});
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
 
@@ -79,6 +89,7 @@ export default function DriverTracking() {
 
       setTrip(data);
       setCurrentStatus(data.status === 'late' ? 'late' : data.status === 'at_risk' ? 'at_risk' : 'on_time');
+      setSelectedTripAction(data.status === 'delivered' ? 'delivered' : null);
       setError('');
       await refreshRouteProgress(data);
 
@@ -110,7 +121,8 @@ export default function DriverTracking() {
     try {
       setIsSendingLocation(true);
       await postDriverLocationUpdate(trip.id, lat, lng, { trackingToken: trip.tracking_token });
-      setLocationSendFailed(false);
+      setLocationAccessFailed(false);
+      setLocationUpdateDelayed(false);
       const sentAt = new Date().toISOString();
       setLastLocationSentAt(sentAt);
       const nextTrip = {
@@ -140,8 +152,7 @@ export default function DriverTracking() {
 
       return true;
     } catch {
-      setLocationSendFailed(true);
-      toast.error('Failed to send location update');
+      setLocationUpdateDelayed(true);
       return false;
     } finally {
       setIsSendingLocation(false);
@@ -157,26 +168,31 @@ export default function DriverTracking() {
       (position) => {
         setLocationGranted(true);
         setLocationDenied(false);
+        setLocationAccessFailed(false);
         void sendLocation(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
+        setLocationAccessFailed(true);
+
         if (error.code === error.PERMISSION_DENIED) {
           setGeoPermissionState('denied');
           setLocationDenied(true);
           setLocationGranted(false);
-          toast.error('Location permission denied');
           return;
         }
-
-        setLocationSendFailed(true);
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 15000,
+        maximumAge: 15000,
+        timeout: 20000,
       }
     );
   }, [sendLocation]);
+
+  // Keep the ref in sync with the latest callback.
+  useEffect(() => {
+    requestCurrentLocationRef.current = requestCurrentLocation;
+  }, [requestCurrentLocation]);
 
   useEffect(() => {
     if (!('permissions' in navigator) || !navigator.permissions?.query) {
@@ -274,24 +290,47 @@ export default function DriverTracking() {
     };
   }, [trip]);
 
+  // GPS interval — only runs after the user explicitly clicks Start Tracking.
+  // Uses requestCurrentLocationRef so the interval is NEVER restarted by trip
+  // state updates (which previously reset the 30s clock after every ping).
+  // Only restarts when tracking is toggled, permission is revoked, or trip changes.
   useEffect(() => {
-    if (!trip || !locationGranted || locationDenied || trip.status === 'delivered') {
+    if (!isTrackingActive || locationDenied || !trip || trip.status === 'delivered') {
       return;
     }
-
-    requestCurrentLocation();
-    const interval = setInterval(requestCurrentLocation, LOCATION_PUSH_INTERVAL_MS);
+    const interval = setInterval(() => {
+      requestCurrentLocationRef.current();
+    }, LOCATION_PUSH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [locationDenied, locationGranted, requestCurrentLocation, trip]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTrackingActive, locationDenied, trip?.id, trip?.status]);
 
-  const requestLocation = () => {
+  // startTracking — called directly by the "Start Tracking" button click.
+  // Calling getCurrentPosition here (via requestCurrentLocation) counts as a
+  // user gesture because it is synchronously inside the click handler.
+  const startTracking = () => {
     if (!navigator.geolocation) {
-      toast.error('Geolocation not supported');
+      setLocationAccessFailed(true);
       return;
     }
-
     setLocationDenied(false);
+    setLocationAccessFailed(false);
+    setIsTrackingActive(true);
+    // Fire the first GPS ping immediately — this is inside the click handler
+    // so browsers accept it as a user-initiated geolocation request.
     requestCurrentLocation();
+  };
+
+  const stopTracking = () => {
+    setIsTrackingActive(false);
+    setLocationUpdateDelayed(false);
+    if (trip && trackingStartedLoggedRef.current && !trackingStoppedLoggedRef.current) {
+      trackingStoppedLoggedRef.current = true;
+      trackingStartedLoggedRef.current = false;
+      postTripEvent(trip.id, 'tracking_stopped', {
+        note: 'Driver manually stopped GPS tracking',
+      }).catch(() => {});
+    }
   };
 
   // Update driver status
@@ -313,6 +352,7 @@ export default function DriverTracking() {
         note: 'Driver reached destination',
       });
       await markTripArrived(trip.id);
+      setSelectedTripAction('arrived_destination');
       toast.success('Arrival recorded');
     } catch {
       toast.error('Failed to record arrival');
@@ -325,6 +365,7 @@ export default function DriverTracking() {
       await postTripEvent(trip.id, 'reached_pickup', {
         note: 'Driver reached pickup location',
       });
+      setSelectedTripAction('reached_pickup');
       toast.success('Pickup milestone recorded');
     } catch {
       toast.error('Failed to record pickup milestone');
@@ -341,6 +382,7 @@ export default function DriverTracking() {
           note: 'Tracking stopped after delivery',
         });
       }
+      setSelectedTripAction('delivered');
       setTrip({ ...trip, status: 'delivered', is_active: false });
       toast.success('Trip marked as delivered');
     } catch {
@@ -435,24 +477,31 @@ export default function DriverTracking() {
           )}
         </div>
 
-        {/* Location permission */}
-        {!locationGranted && !locationDenied && (
-          <Button onClick={requestLocation} className="w-full" size="lg">
-            <Navigation className="w-4 h-4 mr-2" /> Share My Location
+        {/* Location permission / tracking controls */}
+        {!isTrackingActive && !locationDenied && trip.status !== 'delivered' && (
+          <Button onClick={startTracking} className="w-full" size="lg">
+            <Navigation className="w-4 h-4 mr-2" />
+            {geoPermissionState === 'granted' ? 'Start Tracking' : 'Share My Location'}
           </Button>
         )}
 
-        {locationDenied && (
+        {isTrackingActive && trip.status !== 'delivered' && (
+          <Button onClick={stopTracking} variant="outline" className="w-full" size="sm">
+            <XCircle className="w-4 h-4 mr-2" /> Stop Tracking
+          </Button>
+        )}
+
+        {(locationDenied || locationAccessFailed) && (
           <div className="card-elevated p-4 text-center border-destructive">
             <AlertTriangle className="w-8 h-8 text-destructive mx-auto mb-2" />
-            <p className="text-sm font-medium">Location permission denied</p>
+            <p className="text-sm font-medium">Could not access device location. Please enable GPS/location permissions.</p>
             <p className="text-xs text-muted-foreground mt-1">
               Please allow location access for this site in browser settings, then tap Share My Location.
             </p>
           </div>
         )}
 
-        {locationGranted && lastLocationSentAt && (
+        {isTrackingActive && lastLocationSentAt && (
           <div className="card-elevated p-4 text-center">
             <CheckCircle className="w-6 h-6 text-success mx-auto mb-1" />
             <p className="text-sm font-medium">Location sharing active</p>
@@ -470,7 +519,7 @@ export default function DriverTracking() {
           </p>
         </div>
 
-        {locationGranted && !lastLocationSentAt && !locationDenied && (
+        {isTrackingActive && !lastLocationSentAt && !locationDenied && !locationAccessFailed && (
           <div className="card-elevated p-4 text-center">
             <Navigation className="w-6 h-6 text-primary mx-auto mb-1" />
             <p className="text-sm font-medium">Location permission granted</p>
@@ -478,11 +527,11 @@ export default function DriverTracking() {
           </div>
         )}
 
-        {locationSendFailed && !locationDenied && (
+        {locationUpdateDelayed && !locationDenied && !locationAccessFailed && (
           <div className="card-elevated p-4 text-center border-destructive">
             <AlertTriangle className="w-6 h-6 text-destructive mx-auto mb-1" />
-            <p className="text-sm font-medium">GPS update failed</p>
-            <p className="text-xs text-muted-foreground">Check network or GPS permissions. Automatic retry continues every 30 seconds.</p>
+            <p className="text-sm font-medium">Could not send location update. Please check network connection.</p>
+            <p className="text-xs text-muted-foreground">Location update delayed. SafarLink will retry automatically every 30 seconds.</p>
           </div>
         )}
 
@@ -526,14 +575,29 @@ export default function DriverTracking() {
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Trip Actions</p>
-          <div className="grid grid-cols-3 gap-2">
-            <Button variant="outline" size="sm" onClick={handleReachedPickup} disabled={trip.status === 'delivered'}>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant={selectedTripAction === 'reached_pickup' ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleReachedPickup}
+              disabled={trip.status === 'delivered'}
+            >
               Reached Pickup
             </Button>
-            <Button variant="outline" size="sm" onClick={handleArrived} disabled={trip.status === 'delivered'}>
+            <Button
+              variant={selectedTripAction === 'arrived_destination' ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleArrived}
+              disabled={trip.status === 'delivered'}
+            >
               Arrived at Destination
             </Button>
-            <Button size="sm" onClick={handleDelivered} disabled={trip.status === 'delivered'}>
+            <Button
+              variant={selectedTripAction === 'delivered' || trip.status === 'delivered' ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleDelivered}
+              disabled={trip.status === 'delivered'}
+            >
               Delivered
             </Button>
           </div>

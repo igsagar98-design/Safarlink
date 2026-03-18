@@ -7,6 +7,7 @@ interface TripForRisk {
 }
 
 const AT_RISK_WINDOW_MS = 2 * 60 * 60 * 1000;
+const MIN_PREDICTED_DELAY_FOR_RISK_MS = 30 * 60 * 1000;
 
 const STATUS_SEVERITY: Record<TripStatus, number> = {
   on_time: 0,
@@ -80,13 +81,30 @@ export function calculateTripStatus(trip: TripForRisk): TripStatus {
 
   const now = new Date();
 
-  const targetDates = [parseTripDate(trip.planned_arrival), parseTripDate(trip.current_eta)].filter(
-    (value): value is Date => value !== null
-  );
+  const plannedArrivalDate = parseTripDate(trip.planned_arrival);
+  const predictedEtaDate = parseTripDate(trip.current_eta);
 
-  const scheduleStatus = targetDates.reduce<Exclude<TripStatus, 'delivered'>>((acc, dateValue) => {
-    return pickStrongerStatus(acc, statusFromTargetTime(dateValue, now));
-  }, 'on_time');
+  const plannedStatus = plannedArrivalDate
+    ? statusFromTargetTime(plannedArrivalDate, now)
+    : 'on_time';
+
+  let predictedStatus: Exclude<TripStatus, 'delivered'> = 'on_time';
+
+  // Only let predicted ETA raise risk when the prediction is materially later than plan.
+  if (plannedArrivalDate && predictedEtaDate) {
+    const predictedDelayMs = predictedEtaDate.getTime() - plannedArrivalDate.getTime();
+
+    if (predictedDelayMs > MIN_PREDICTED_DELAY_FOR_RISK_MS) {
+      predictedStatus = statusFromTargetTime(predictedEtaDate, now);
+      if (predictedStatus === 'on_time') {
+        predictedStatus = 'at_risk';
+      }
+    }
+  } else if (!plannedArrivalDate && predictedEtaDate) {
+    predictedStatus = statusFromTargetTime(predictedEtaDate, now);
+  }
+
+  const scheduleStatus = pickStrongerStatus(plannedStatus, predictedStatus);
 
   const explicitStatus: Exclude<TripStatus, 'delivered'> =
     trip.status === 'late' || trip.status === 'at_risk' ? trip.status : 'on_time';
