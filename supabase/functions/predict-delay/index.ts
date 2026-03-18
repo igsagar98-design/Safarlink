@@ -17,10 +17,9 @@ type PredictDelayRequest = {
 const GOOGLE_ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://www.safarlink.in',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Vary': 'Origin',
 };
 
 function parseDurationSeconds(value: string | undefined): number {
@@ -43,7 +42,7 @@ function computePredictedStatus(plannedArrivalIso: string, predictedArrivalIso: 
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
