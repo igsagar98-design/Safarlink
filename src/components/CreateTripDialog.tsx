@@ -56,6 +56,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<'single' | 'bulk'>('single');
+  const [gpsOnlyMode, setGpsOnlyMode] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyQuery, setCompanyQuery] = useState('');
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
@@ -380,10 +381,20 @@ export default function CreateTripDialog({ onCreated }: Props) {
         const additionalStopsPayload = buildAdditionalStopsPayload();
         const routePlanPayload = buildRoutePlanPayload(additionalStopsPayload);
         const gpsLink = normalizeOptionalLink(form.gps_tracking_link);
+        if (gpsOnlyMode && !gpsLink) {
+          throw new Error('GPS-only mode requires a GPS tracking link.');
+        }
 
         if (gpsLink && !isValidHttpUrl(gpsLink)) {
           throw new Error('GPS tracking link must start with http:// or https://');
         }
+
+        const driverName = gpsOnlyMode
+          ? (form.driver_name.trim() || 'GPS Provider')
+          : form.driver_name;
+        const driverPhone = gpsOnlyMode
+          ? (form.driver_phone.trim() || 'N/A')
+          : form.driver_phone;
 
         const tripPayload = {
           user_id: user.id,
@@ -395,8 +406,8 @@ export default function CreateTripDialog({ onCreated }: Props) {
           drop_latitude: dropLocation?.lat ?? null,
           drop_longitude: dropLocation?.lng ?? null,
           gps_tracking_link: gpsLink,
-          driver_name: form.driver_name,
-          driver_phone: form.driver_phone,
+          driver_name: driverName,
+          driver_phone: driverPhone,
           customer_name:
             companies.find((company) => company.id === companyId)?.company_name
             || form.customer_name,
@@ -446,6 +457,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
       setPickupLocation(null);
       setDropLocation(null);
       setAdditionalStops([]);
+      setGpsOnlyMode(false);
       setOpen(false);
       if (createdTrip) {
         await onCreated(createdTrip);
@@ -465,10 +477,11 @@ export default function CreateTripDialog({ onCreated }: Props) {
     type?: string;
     placeholder: string;
     required?: boolean;
+    hiddenInGpsOnly?: boolean;
   }[] = [
     { key: 'vehicle_number', label: 'Vehicle Number', placeholder: 'MH 12 AB 1234' },
-    { key: 'driver_name', label: 'Driver Name', placeholder: 'Rajesh Kumar' },
-    { key: 'driver_phone', label: 'Driver Phone', placeholder: '+91 98765 43210' },
+    { key: 'driver_name', label: 'Driver Name', placeholder: 'Rajesh Kumar', hiddenInGpsOnly: true },
+    { key: 'driver_phone', label: 'Driver Phone', placeholder: '+91 98765 43210', hiddenInGpsOnly: true },
     { key: 'gps_tracking_link', label: 'GPS Tracking Link (Optional)', placeholder: 'https://gps.example.com/live/vehicle-123', required: false },
     { key: 'transporter_name', label: 'Transporter Name', placeholder: 'ABC Transport' },
     { key: 'customer_name', label: 'Customer / Plant', placeholder: 'Tata Steel Jamshedpur' },
@@ -587,7 +600,35 @@ export default function CreateTripDialog({ onCreated }: Props) {
 
           {mode === 'single' ? (
             <>
+              <div className="space-y-2 rounded-md border p-3">
+                <Label className="text-xs">Tracking Source</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={gpsOnlyMode ? 'outline' : 'default'}
+                    onClick={() => setGpsOnlyMode(false)}
+                  >
+                    Driver Link
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={gpsOnlyMode ? 'default' : 'outline'}
+                    onClick={() => setGpsOnlyMode(true)}
+                  >
+                    External GPS Link
+                  </Button>
+                </div>
+                {gpsOnlyMode && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Driver details are optional in this mode. A valid GPS tracking URL is required.
+                  </p>
+                )}
+              </div>
+
               {fields
+                .filter((f) => !(gpsOnlyMode && f.hiddenInGpsOnly))
                 .map(f => {
                   if (f.key === 'origin') {
                     return (
