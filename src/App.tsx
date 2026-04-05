@@ -15,6 +15,8 @@ import CustomerTracking from "./pages/CustomerTracking";
 import TrackingPage from "./pages/TrackingPage";
 import NotFound from "./pages/NotFound";
 
+import DriverLinkRouter from "./pages/DriverLinkRouter";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -32,6 +34,7 @@ const App = () => (
           <Route path="/profile" element={<Profile />} />
           <Route path="/company-profile" element={<CompanyProfile />} />
           <Route path="/driver/:token" element={<DriverTracking />} />
+          <Route path="/d/:token" element={<DriverLinkRouter />} />
           <Route path="/track/:token" element={<CustomerTracking />} />
           <Route path="/tracking" element={<TrackingPage />} />
           <Route path="*" element={<NotFound />} />
