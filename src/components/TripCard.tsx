@@ -20,6 +20,11 @@ export default function TripCard({ trip, onSelect }: Props) {
         <div className="flex items-center gap-2 min-w-0">
           <Truck className="w-4 h-4 text-muted-foreground shrink-0" />
           <span className="font-display font-semibold text-sm truncate">{trip.vehicle_number}</span>
+          {trip.trip_no && (
+            <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono truncate max-w-[80px]">
+              {trip.trip_no}
+            </span>
+          )}
         </div>
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${getStatusClass(computedStatus)}`}>
           {getStatusLabel(computedStatus)}

@@ -252,6 +252,7 @@ export type Database = {
           tracking_token: string
           transporter_company_id: string | null
           transporter_name: string
+          trip_no: string | null
           updated_at: string
           user_id: string
           vehicle_number: string
@@ -285,6 +286,7 @@ export type Database = {
           tracking_token?: string
           transporter_company_id?: string | null
           transporter_name: string
+          trip_no?: string | null
           updated_at?: string
           user_id: string
           vehicle_number: string
@@ -318,6 +320,7 @@ export type Database = {
           tracking_token?: string
           transporter_company_id?: string | null
           transporter_name?: string
+          trip_no?: string | null
           updated_at?: string
           user_id?: string
           vehicle_number?: string

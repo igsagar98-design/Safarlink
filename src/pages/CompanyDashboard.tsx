@@ -108,6 +108,7 @@ export default function CompanyDashboard() {
 
     return statusFilteredTrips.filter((trip) =>
       trip.vehicle_number.toLowerCase().includes(q) ||
+      (trip.trip_no || '').toLowerCase().includes(q) ||
       trip.material.toLowerCase().includes(q) ||
       trip.transporter_name.toLowerCase().includes(q) ||
       trip.origin.toLowerCase().includes(q) ||
@@ -201,7 +202,7 @@ export default function CompanyDashboard() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="Search by vehicle, material, transporter, location…"
+              placeholder="Search by vehicle, trip number, material, location…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

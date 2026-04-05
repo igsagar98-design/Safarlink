@@ -43,6 +43,7 @@ export interface CreateTripInput {
   destination: string;
   material: string;
   planned_arrival: string;
+  trip_no?: string | null;
   transporter_company_id?: string | null;
   company_id?: string | null;
 }
@@ -62,6 +63,7 @@ export interface UpdateTripInput {
   destination?: string;
   material?: string;
   planned_arrival?: string;
+  trip_no?: string | null;
 }
 
 export interface SignupInput {
@@ -570,7 +572,42 @@ export async function getDriverTripByToken(trackingToken: string): Promise<Trip 
     .maybeSingle();
 
   if (error) throw error;
-  return data as Trip | null;
+  return hydrateTripWithLatestLocationUpdate(data as Trip | null);
+}
+
+async function hydrateTripWithLatestLocationUpdate(trip: Trip | null): Promise<Trip | null> {
+  if (!trip) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('trip_location_updates')
+      .select('latitude, longitude, location_name, recorded_at')
+      .eq('trip_id', trip.id)
+      .order('recorded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return trip;
+
+    const tripUpdatedAt = trip.last_update_at ? new Date(trip.last_update_at).getTime() : 0;
+    const locationUpdatedAt = data.recorded_at ? new Date(data.recorded_at).getTime() : 0;
+    const shouldHydrate =
+      typeof trip.last_latitude !== 'number'
+      || typeof trip.last_longitude !== 'number'
+      || locationUpdatedAt > tripUpdatedAt;
+
+    if (!shouldHydrate) return trip;
+
+    return {
+      ...trip,
+      last_latitude: data.latitude,
+      last_longitude: data.longitude,
+      last_location_name: data.location_name,
+      last_update_at: data.recorded_at,
+    };
+  } catch {
+    return trip;
+  }
 }
 
 export async function getCustomerTripByToken(
@@ -583,7 +620,7 @@ export async function getCustomerTripByToken(
     .maybeSingle();
 
   if (error) throw error;
-  return data as Trip | null;
+  return hydrateTripWithLatestLocationUpdate(data as Trip | null);
 }
 
 export async function postDriverLocationUpdate(

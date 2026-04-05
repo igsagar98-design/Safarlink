@@ -68,6 +68,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
   const [additionalStops, setAdditionalStops] = useState<AdditionalStop[]>([]);
   const [form, setForm] = useState({
     vehicle_number: '',
+    trip_no: '',
     driver_name: '',
     driver_phone: '',
     gps_tracking_link: '',
@@ -287,17 +288,18 @@ export default function CreateTripDialog({ onCreated }: Props) {
 
     return lines.map((line, index) => {
       const parts = line.split('|').map((part) => part.trim());
-      if (parts.length !== 9 && parts.length !== 10) {
+      if (parts.length < 10 || parts.length > 11) {
         throw new Error(
-          `Line ${index + 1} must contain 9 or 10 values separated by | (vehicle, driver, phone, transporter, customer, origin, destination, material, planned_arrival, [optional gps_tracking_link]).`
+          `Line ${index + 1} must contain 10 or 11 values separated by | (vehicle, trip_no, driver, phone, transporter, customer, origin, destination, material, planned_arrival, [optional gps_tracking_link]).`
         );
       }
 
-      const requiredParts = parts.slice(0, 9);
-      const emptyFieldIndex = requiredParts.findIndex((part) => part.length === 0);
+      const requiredParts = parts.slice(0, 10);
+      const emptyFieldIndex = requiredParts.findIndex((part, i) => i !== 1 && part.length === 0);
       if (emptyFieldIndex !== -1) {
         const fieldNames = [
           'vehicle_number',
+          'trip_no',
           'driver_name',
           'driver_phone',
           'transporter_name',
@@ -310,13 +312,13 @@ export default function CreateTripDialog({ onCreated }: Props) {
         throw new Error(`Line ${index + 1} has empty ${fieldNames[emptyFieldIndex]}.`);
       }
 
-      const plannedArrivalDate = new Date(parts[8]);
+      const plannedArrivalDate = new Date(parts[9]);
       if (Number.isNaN(plannedArrivalDate.getTime())) {
         throw new Error(`Line ${index + 1} has invalid planned_arrival. Use format YYYY-MM-DDTHH:mm.`);
       }
       const plannedArrivalIso = plannedArrivalDate.toISOString();
 
-      const gpsTrackingLink = normalizeOptionalLink(parts[9] || '');
+      const gpsTrackingLink = normalizeOptionalLink(parts[10] || '');
       if (gpsTrackingLink && !isValidHttpUrl(gpsTrackingLink)) {
         throw new Error(`Line ${index + 1} has invalid gps_tracking_link. Use http:// or https:// URL.`);
       }
@@ -328,13 +330,14 @@ export default function CreateTripDialog({ onCreated }: Props) {
         transporter_company_id: profile?.company_id ?? null,
         company_id: companyId,
         vehicle_number: parts[0],
-        driver_name: parts[1],
-        driver_phone: parts[2],
-        transporter_name: parts[3],
-        customer_name: selectedCompany?.company_name || parts[4],
-        origin: parts[5],
-        destination: parts[6],
-        material: parts[7],
+        trip_no: normalizeOptionalLink(parts[1]),
+        driver_name: parts[2],
+        driver_phone: parts[3],
+        transporter_name: parts[4],
+        customer_name: selectedCompany?.company_name || parts[5],
+        origin: parts[6],
+        destination: parts[7],
+        material: parts[8],
         planned_arrival: plannedArrivalIso,
         gps_tracking_link: gpsTrackingLink,
       };
@@ -395,6 +398,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
           drop_latitude: dropLocation?.lat ?? null,
           drop_longitude: dropLocation?.lng ?? null,
           gps_tracking_link: gpsLink,
+          trip_no: normalizeOptionalLink(form.trip_no),
           driver_name: form.driver_name,
           driver_phone: form.driver_phone,
           customer_name:
@@ -432,6 +436,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
       toast.success(mode === 'single' ? 'Trip created!' : 'Bulk shipments created!');
       setForm({
         vehicle_number: '',
+        trip_no: '',
         driver_name: '',
         driver_phone: '',
         gps_tracking_link: '',
@@ -467,6 +472,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
     required?: boolean;
   }[] = [
     { key: 'vehicle_number', label: 'Vehicle Number', placeholder: 'MH 12 AB 1234' },
+    { key: 'trip_no', label: 'Trip Number (Internal)', placeholder: 'TR-2024-001', required: false },
     { key: 'driver_name', label: 'Driver Name', placeholder: 'Rajesh Kumar' },
     { key: 'driver_phone', label: 'Driver Phone', placeholder: '+91 98765 43210' },
     { key: 'gps_tracking_link', label: 'GPS Tracking Link (Optional)', placeholder: 'https://gps.example.com/live/vehicle-123', required: false },
@@ -706,12 +712,12 @@ export default function CreateTripDialog({ onCreated }: Props) {
                 id="bulk-input"
                 value={bulkInput}
                 onChange={(e) => setBulkInput(e.target.value)}
-                placeholder="MH12AB1234|Rajesh Kumar|+919876543210|ABC Transport|Tata Steel|Mumbai|Pune|Tyres|2026-03-08T09:30|https://gps.example.com/live/abc"
+                placeholder="MH12AB1234|TR-001|Rajesh Kumar|+919876543210|ABC Transport|Tata Steel|Mumbai|Pune|Tyres|2026-03-08T09:30|https://gps.example.com/live/abc"
                 className="min-h-36"
                 required
               />
               <p className="text-[11px] text-muted-foreground">
-                Format: vehicle|driver|phone|transporter|customer|origin|destination|material|planned_arrival|gps_tracking_link(optional)
+                Format: vehicle|trip_no|driver|phone|transporter|customer|origin|destination|material|planned_arrival|gps_tracking_link(optional)
               </p>
             </div>
           )}

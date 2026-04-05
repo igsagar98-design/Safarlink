@@ -4,7 +4,7 @@ import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripE
 import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2 } from 'lucide-react';
+import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 import TripTimeline from '@/components/TripTimeline';
 import { Input } from '@/components/ui/input';
@@ -142,6 +142,7 @@ export default function TripDetail({
     destination: trip.destination,
     material: trip.material,
     planned_arrival: format(new Date(trip.planned_arrival), "yyyy-MM-dd'T'HH:mm"),
+    trip_no: trip.trip_no || '',
   });
   const shareBaseUrl = getShareBaseUrl();
   const driverLink = `${shareBaseUrl}/driver/${trip.tracking_token}`;
@@ -159,6 +160,7 @@ export default function TripDetail({
       destination: trip.destination,
       material: trip.material,
       planned_arrival: format(new Date(trip.planned_arrival), "yyyy-MM-dd'T'HH:mm"),
+      trip_no: trip.trip_no || '',
     });
     setIsEditing(false);
   }, [trip]);
@@ -304,6 +306,7 @@ export default function TripDetail({
       const updated = await updateTrip(trip.id, {
         ...form,
         gps_tracking_link: gpsLink || null,
+        trip_no: form.trip_no.trim() || null,
         planned_arrival: new Date(form.planned_arrival).toISOString(),
       });
 
@@ -351,6 +354,7 @@ export default function TripDetail({
 
   const rows = [
     { icon: User, label: 'Driver', value: trip.driver_name },
+    { icon: Hash, label: 'Trip No.', value: trip.trip_no || '—' },
     { icon: Phone, label: 'Phone', value: trip.driver_phone || '—' },
     { icon: ExternalLink, label: 'GPS Link', value: trip.gps_tracking_link || '—' },
     { icon: Building, label: 'Transporter', value: trip.transporter_name },
@@ -495,6 +499,10 @@ export default function TripDetail({
             <div className="space-y-1">
               <Label className="text-xs">Driver Name</Label>
               <Input value={form.driver_name} onChange={(e) => set('driver_name', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Trip Number (Internal)</Label>
+              <Input value={form.trip_no} onChange={(e) => set('trip_no', e.target.value)} placeholder="TR-2024-001" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Driver Phone</Label>
