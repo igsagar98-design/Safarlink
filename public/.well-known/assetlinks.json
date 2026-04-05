@@ -1,10 +1,13 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.safarlink.driverapk",
-      "sha256_cert_fingerprints": ["YOUR_RELEASE_SHA256"]
+      "sha256_cert_fingerprints": ["Y7D:3C:44:1C:98:D1:63:41:19:57:6E:4B:11:A8:6D:C4:29:CB:8B:FE
+      "]
+      }
     }
-  }
-]
+  ]
