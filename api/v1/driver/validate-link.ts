@@ -39,30 +39,7 @@ export default withCors(async function handler(req: VercelRequest, res: VercelRe
 
   const { data: trip, error } = await supabaseAdmin
     .from('trips')
-    .select(
-      [
-        'id',
-        'tracking_token',
-        'vehicle_number',
-        'driver_name',
-        'driver_phone',
-        'transporter_name',
-        'customer_name',
-        'origin',
-        'destination',
-        'material',
-        'planned_arrival',
-        'current_eta',
-        'last_location_name',
-        'last_latitude',
-        'last_longitude',
-        'last_update_at',
-        'status',
-        'is_active',
-        'created_at',
-        'updated_at',
-      ].join(',')
-    )
+    .select('*')
     .eq('tracking_token', extracted.token)
     .maybeSingle();
 
