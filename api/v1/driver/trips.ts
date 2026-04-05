@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { withCors } from '../../_lib/cors';
-import { extractTrackingToken } from '../../_lib/extractTrackingToken';
-import { supabaseAdmin } from '../../_lib/supabaseAdmin';
+import { withCors } from '../../_lib/cors.js';
+import { extractTrackingToken } from '../../_lib/extractTrackingToken.js';
+import { supabaseAdmin } from '../../_lib/supabaseAdmin.js';
 
 export default withCors(async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET' && req.method !== 'POST') {
