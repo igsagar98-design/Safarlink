@@ -5,6 +5,7 @@ type DriverLocationUpdateRequest = {
   currentLatitude: number;
   currentLongitude: number;
   trackingToken?: string;
+  force?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -117,15 +118,16 @@ Deno.serve(async (req) => {
     if (updateError) throw updateError;
 
     // ----------------------------------------------------------------
-    // Throttled Prediction Logic (Every 2 minutes)
+    // Throttled Prediction Logic (Every 2 minutes, unless forced)
     // ----------------------------------------------------------------
     let predictionResult = null;
     const PREDICTION_THROTTLE_MS = 2 * 60 * 1000;
     const now = Date.now();
     const lastPred = trip.last_prediction_at ? new Date(trip.last_prediction_at).getTime() : 0;
+    const isForced = body.force === true;
 
-    if (now - lastPred > PREDICTION_THROTTLE_MS) {
-      console.log(`[driver-location-update] Triggering prediction for trip: ${trip.id}`);
+    if (isForced || (now - lastPred > PREDICTION_THROTTLE_MS)) {
+      console.log(`[driver-location-update] Triggering prediction for trip: ${trip.id} (Forced: ${isForced})`);
       try {
         const predResponse = await fetch(`${supabaseUrl}/functions/v1/predict-delay`, {
           method: 'POST',

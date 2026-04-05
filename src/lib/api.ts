@@ -158,6 +158,7 @@ export interface PredictDelayInput {
   currentLatitude: number;
   currentLongitude: number;
   trackingToken?: string;
+  force?: boolean;
 }
 
 function throwSupabaseError(error: { message?: string } | null): never {

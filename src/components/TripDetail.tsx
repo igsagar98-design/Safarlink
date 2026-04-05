@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Trip } from '@/components/TripCard';
-import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripEvent, type TripStopType, updateTrip, updateTripCreatedEventMetadata } from '@/lib/api';
+import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripEvent, type TripStopType, updateTrip, updateTripCreatedEventMetadata, predictTripDelay } from '@/lib/api';
 import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2, Hash } from 'lucide-react';
+import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2, Hash, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import TripTimeline from '@/components/TripTimeline';
 import { Input } from '@/components/ui/input';
@@ -130,6 +130,7 @@ export default function TripDetail({
   const [eventsUnavailable, setEventsUnavailable] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isRefreshingETA, setIsRefreshingETA] = useState(false);
   const [additionalStops, setAdditionalStops] = useState<AdditionalStop[]>([]);
   const [form, setForm] = useState({
     vehicle_number: trip.vehicle_number,
@@ -238,6 +239,29 @@ export default function TripDetail({
 
   const set = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleRefreshETA = async () => {
+    if (typeof trip.last_latitude !== 'number' || typeof trip.last_longitude !== 'number') {
+      toast.error('Driver must have at least one location update to predict ETA');
+      return;
+    }
+
+    setIsRefreshingETA(true);
+    try {
+      await predictTripDelay({
+        tripId: trip.id,
+        currentLatitude: trip.last_latitude,
+        currentLongitude: trip.last_longitude,
+        force: true,
+      });
+      toast.success('ETA prediction triggered');
+    } catch (err: any) {
+      console.error('Failed to trigger ETA prediction:', err);
+      toast.error(err.message || 'Failed to trigger ETA prediction');
+    } finally {
+      setIsRefreshingETA(false);
+    }
   };
 
   const handleAddStop = () => {
@@ -417,7 +441,21 @@ export default function TripDetail({
           <div key={r.label} className="flex items-center gap-2 text-sm">
             <r.icon className="w-4 h-4 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground w-28 shrink-0">{r.label}</span>
-            <span className="font-medium truncate">{r.value}</span>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="font-medium truncate">{r.value}</span>
+              {r.label === 'Predicted ETA' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0"
+                  onClick={handleRefreshETA}
+                  disabled={isRefreshingETA}
+                  title="Force Refresh predicted ETA"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isRefreshingETA ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </div>

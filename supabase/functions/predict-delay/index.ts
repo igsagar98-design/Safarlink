@@ -1,12 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-type ComputeRoutesResponse = {
-  routes?: Array<{
-    duration?: string;
-    staticDuration?: string;
-  }>;
-};
-
 type PredictDelayRequest = {
   tripId: string;
   currentLatitude: number;
@@ -14,20 +7,12 @@ type PredictDelayRequest = {
   trackingToken?: string;
 };
 
-const GOOGLE_ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://www.safarlink.in',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Vary': 'Origin',
 };
-
-function parseDurationSeconds(value: string | undefined): number {
-  if (!value) return 0;
-  const match = value.match(/^(\d+)s$/);
-  return match ? Number(match[1]) : 0;
-}
 
 function computePredictedStatus(plannedArrivalIso: string, predictedArrivalIso: string): 'on_time' | 'at_risk' | 'late' {
   const plannedMs = new Date(plannedArrivalIso).getTime();
@@ -89,44 +74,39 @@ Deno.serve(async (req) => {
       });
     }
 
-    const routesResponse = await fetch(GOOGLE_ROUTES_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': googleApiKey,
-        'X-Goog-FieldMask': 'routes.duration,routes.staticDuration',
-      },
-      body: JSON.stringify({
-        origin: {
-          location: {
-            latLng: {
-              latitude: body.currentLatitude,
-              longitude: body.currentLongitude,
-            },
-          },
-        },
-        destination: {
-          address: trip.destination,
-        },
-        travelMode: 'DRIVE',
-        routingPreference: 'TRAFFIC_AWARE',
-        computeAlternativeRoutes: false,
-        languageCode: 'en-US',
-        units: 'METRIC',
-      }),
-    });
+    // --- Switch to Classic Directions API ---
+    // Endpoint: https://maps.googleapis.com/maps/api/directions/json
+    const origin = `${body.currentLatitude},${body.currentLongitude}`;
+    const destination = encodeURIComponent(trip.destination);
+    const googleUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&mode=driving&key=${googleApiKey}`;
 
-    if (!routesResponse.ok) {
-      const details = await routesResponse.text();
-      throw new Error(`Google Routes API error (${routesResponse.status}): ${details}`);
+    const directionsResponse = await fetch(googleUrl);
+    
+    if (!directionsResponse.ok) {
+      const details = await directionsResponse.text();
+      throw new Error(`Google API network error (${directionsResponse.status}): ${details}`);
     }
 
-    const routeData = (await routesResponse.json()) as ComputeRoutesResponse;
-    const durationSeconds = parseDurationSeconds(routeData.routes?.[0]?.duration)
-      || parseDurationSeconds(routeData.routes?.[0]?.staticDuration);
+    const directionsData = await directionsResponse.json();
 
-    if (durationSeconds <= 0) {
-      throw new Error('Unable to determine remaining travel time.');
+    if (directionsData.status !== 'OK') {
+      // If the API returns an error status (like REQUEST_DENIED), log it as a timeline event so the user can debug.
+      console.error(`[predict-delay] Google Directions error: ${directionsData.status}`, directionsData.error_message || '');
+      
+      await supabaseAdmin.from('trip_status_updates').insert({
+        trip_id: trip.id,
+        status: trip.status || 'on_time',
+        note: `Smart ETA Error: ${directionsData.status} - ${directionsData.error_message || 'Please check your Google API Key permissions.'}`,
+      });
+
+      throw new Error(`Google API returned status: ${directionsData.status} ${directionsData.error_message || ''}`);
+    }
+
+    // Extract travel time from the first leg of the first route
+    const durationSeconds = directionsData.routes?.[0]?.legs?.[0]?.duration?.value;
+
+    if (!durationSeconds || durationSeconds <= 0) {
+      throw new Error('Unable to determine remaining travel time from Google Directions response.');
     }
 
     const nowMs = Date.now();
@@ -155,6 +135,7 @@ Deno.serve(async (req) => {
       throw updateError;
     }
 
+    // Log the automatic change to the timeline if the risk status changes
     if (predictedStatus !== 'delivered') {
       const { data: latestStatusRows } = await supabaseAdmin
         .from('trip_status_updates')
