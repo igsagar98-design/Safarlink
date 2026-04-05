@@ -398,10 +398,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
           drop_latitude: dropLocation?.lat ?? null,
           drop_longitude: dropLocation?.lng ?? null,
           gps_tracking_link: gpsLink,
-<<<<<<< HEAD
           trip_no: normalizeOptionalLink(form.trip_no),
-=======
->>>>>>> origin/main
           driver_name: form.driver_name,
           driver_phone: form.driver_phone,
           customer_name:
@@ -475,10 +472,7 @@ export default function CreateTripDialog({ onCreated }: Props) {
     required?: boolean;
   }[] = [
     { key: 'vehicle_number', label: 'Vehicle Number', placeholder: 'MH 12 AB 1234' },
-<<<<<<< HEAD
     { key: 'trip_no', label: 'Trip Number (Internal)', placeholder: 'TR-2024-001', required: false },
-=======
->>>>>>> origin/main
     { key: 'driver_name', label: 'Driver Name', placeholder: 'Rajesh Kumar' },
     { key: 'driver_phone', label: 'Driver Phone', placeholder: '+91 98765 43210' },
     { key: 'gps_tracking_link', label: 'GPS Tracking Link (Optional)', placeholder: 'https://gps.example.com/live/vehicle-123', required: false },
