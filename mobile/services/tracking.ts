@@ -44,7 +44,6 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }: any) => {
             .from('trip_location_updates')
             .insert({
                trip_id: tripId,
-               user_id: driverId,
                latitude,
                longitude,
                speed: speed || 0,

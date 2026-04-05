@@ -8,10 +8,9 @@ type PredictDelayRequest = {
 };
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://www.safarlink.in',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Vary': 'Origin',
 };
 
 function computePredictedStatus(plannedArrivalIso: string, predictedArrivalIso: string): 'on_time' | 'at_risk' | 'late' {

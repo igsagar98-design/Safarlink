@@ -13,13 +13,10 @@ type DriverLocationUpdateRequest = {
 // Allow requests from your production domain. Every single response —
 // including OPTIONS preflight, error, and success — must carry these headers.
 // ---------------------------------------------------------------------------
-const ALLOWED_ORIGIN = 'https://www.safarlink.in';
-
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Vary': 'Origin',
 };
 
 const toLocationName = (latitude: number, longitude: number) =>
