@@ -28,20 +28,32 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }: any) => {
 
         if (!tripId || !driverId) return;
 
-        // Send location to Supabase - Correct Table: trip_location_updates
-        await supabase
-          .from('trip_location_updates')
-          .insert({
-             trip_id: tripId,
-             user_id: driverId,
-             latitude,
-             longitude,
-             speed: speed || 0,
-             heading: heading || 0,
-             recorded_at: new Date(location.timestamp).toISOString(),
-          });
+        // 1. Send location to the Edge Function (Updates Trip Metadata + Triggers ETA Prediction)
+        const { error: funcError } = await supabase.functions.invoke('driver-location-update', {
+          body: {
+            tripId: tripId,
+            currentLatitude: latitude,
+            currentLongitude: longitude,
+          },
+        });
+
+        if (funcError) {
+          console.error('Edge Function update failed, falling back to DB insert:', funcError);
+          // 2. Fallback: Direct DB insert (Ensures location history is preserved even if function fails)
+          await supabase
+            .from('trip_location_updates')
+            .insert({
+               trip_id: tripId,
+               user_id: driverId,
+               latitude,
+               longitude,
+               speed: speed || 0,
+               heading: heading || 0,
+               recorded_at: new Date(location.timestamp).toISOString(),
+            });
+        }
           
-        console.log('Location synced to trip:', tripId, latitude, longitude);
+        console.log('Location synced to trip:', tripId, latitude, longitude, funcError ? '(DB Fallback)' : '(Edge Function)');
       } catch (err) {
         console.error('Failed to sync location:', err);
       }

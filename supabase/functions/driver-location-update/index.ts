@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
 
     const { data: trip, error: tripError } = await supabaseAdmin
       .from('trips')
-      .select('id, tracking_token, status')
+      .select('id, tracking_token, status, last_prediction_at')
       .eq('id', body.tripId)
       .maybeSingle();
 
@@ -103,8 +103,7 @@ Deno.serve(async (req) => {
     const lastUpdateAt = new Date().toISOString();
     const locationName = toLocationName(body.currentLatitude, body.currentLongitude);
 
-    // Overwrite latest coordinates only. No timeline event is written here —
-    // GPS location pings must never pollute the trip timeline.
+    // Overwrite latest coordinates only.
     const { error: updateError } = await supabaseAdmin
       .from('trips')
       .update({
@@ -118,8 +117,44 @@ Deno.serve(async (req) => {
     if (updateError) throw updateError;
 
     // ----------------------------------------------------------------
-    // End of GPS update logic.
+    // Throttled Prediction Logic (Every 2 minutes)
     // ----------------------------------------------------------------
+    let predictionResult = null;
+    const PREDICTION_THROTTLE_MS = 2 * 60 * 1000;
+    const now = Date.now();
+    const lastPred = trip.last_prediction_at ? new Date(trip.last_prediction_at).getTime() : 0;
+
+    if (now - lastPred > PREDICTION_THROTTLE_MS) {
+      console.log(`[driver-location-update] Triggering prediction for trip: ${trip.id}`);
+      try {
+        const predResponse = await fetch(`${supabaseUrl}/functions/v1/predict-delay`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            tripId: trip.id,
+            currentLatitude: body.currentLatitude,
+            currentLongitude: body.currentLongitude,
+            trackingToken: body.trackingToken,
+          }),
+        });
+
+        if (predResponse.ok) {
+          predictionResult = await predResponse.json();
+          // Update last_prediction_at timestamp
+          await supabaseAdmin
+            .from('trips')
+            .update({ last_prediction_at: new Date().toISOString() })
+            .eq('id', trip.id);
+        } else {
+          console.error(`[driver-location-update] Prediction failed: ${await predResponse.text()}`);
+        }
+      } catch (err) {
+        console.error(`[driver-location-update] Prediction error: ${err.message}`);
+      }
+    }
 
     return new Response(
       JSON.stringify({
@@ -129,6 +164,7 @@ Deno.serve(async (req) => {
         lastLongitude: body.currentLongitude,
         lastLocationName: locationName,
         lastUpdateAt,
+        prediction: predictionResult ? 'updated' : 'throttled',
       }),
       {
         status: 200,

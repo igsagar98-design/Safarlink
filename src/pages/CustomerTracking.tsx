@@ -228,7 +228,7 @@ export default function CustomerTracking() {
       label: 'Predicted ETA',
       value: trip.predicted_arrival
         ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm')
-        : (trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : 'Same as planned'),
+        : (trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : 'Calculating...'),
     },
     {
       icon: AlertTriangle,
