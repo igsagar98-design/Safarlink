@@ -241,11 +241,11 @@ export default function CustomerTracking() {
     {
       icon: MapPin,
       label: 'Last Location',
-      value: hasDriverCoordinates
-        ? (trip.last_location_name || 'Live marker shown on map')
+      value: trip.last_location_name || (hasDriverCoordinates
+        ? 'Live marker shown on map'
         : (trackingMode === 'external_gps_link'
             ? 'Live tracking available via GPS link'
-            : 'Awaiting first driver location'),
+            : 'Awaiting first driver location')),
     },
     { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
   ];

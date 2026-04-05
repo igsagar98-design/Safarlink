@@ -405,7 +405,7 @@ export default function TripDetail({
     {
       icon: MapPin,
       label: 'Last Location',
-      value: driverPoint ? 'Live marker shown on map' : (trip.last_location_name || 'No updates yet'),
+      value: trip.last_location_name || 'No updates yet',
     },
     { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
   ];

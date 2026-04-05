@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createCompany, createTrip, createTrips, listCompanies, replaceTripStops, updateTripCreatedEventMetadata, type Company, type Trip } from '@/lib/api';
+import { createCompany, createTrip, createTrips, listCompanies, predictTripDelay, replaceTripStops, updateTripCreatedEventMetadata, type Company, type Trip } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -426,6 +426,17 @@ export default function CreateTripDialog({ onCreated }: Props) {
               route_plan: routePlanPayload,
             });
           }
+        }
+
+        // Trigger initial ETA prediction immediately for the first-time view
+        if (createdTrip && pickupLocation) {
+          predictTripDelay({
+            tripId: createdTrip.id,
+            currentLatitude: pickupLocation.lat,
+            currentLongitude: pickupLocation.lng,
+          }).catch((err) => {
+            console.error('Initial prediction failed:', err);
+          });
         }
       } else {
         const payload = parseBulkLines(bulkInput, user.id, companyId);

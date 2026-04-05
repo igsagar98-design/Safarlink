@@ -118,6 +118,17 @@ Deno.serve(async (req) => {
     if (updateError) throw updateError;
 
     // ----------------------------------------------------------------
+    // Step 3 — Log to History (Ensures "Last Location" Address is available)
+    // ----------------------------------------------------------------
+    await supabaseAdmin.from('trip_location_updates').insert({
+      trip_id: trip.id,
+      latitude: body.currentLatitude,
+      longitude: body.currentLongitude,
+      location_name: locationName,
+      recorded_at: lastUpdateAt,
+    });
+
+    // ----------------------------------------------------------------
     // Throttled Prediction Logic (Every 2 minutes, unless forced)
     // ----------------------------------------------------------------
     let predictionResult = null;
