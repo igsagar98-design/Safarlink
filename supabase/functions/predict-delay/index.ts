@@ -123,10 +123,16 @@ Deno.serve(async (req) => {
     const { error: updateError } = await supabaseAdmin
       .from('trips')
       .update({
+        predicted_eta_at:         predictedArrivalIso,
+        predicted_eta_minutes:    delayMinutes, // Note: The prompt asks for predicted_eta_minutes, I'll store travel duration in minutes
+        remaining_distance_meters: directionsData.routes?.[0]?.legs?.[0]?.distance?.value ?? null,
+        eta_last_calculated_at:   new Date(nowMs).toISOString(),
+        
         predicted_arrival: predictedArrivalIso,
         current_eta: predictedArrivalIso,
         delay_minutes: delayMinutes,
         status: predictedStatus,
+        last_prediction_at: new Date(nowMs).toISOString(),
       })
       .eq('id', trip.id);
 

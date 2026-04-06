@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 
 const ALL_COMPANIES_VALUE = '__all_companies__';
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const ETA_UPDATER_INTERVAL_MS = 2 * 60 * 1000; // One batch call covers all trips
 
 export default function Dashboard() {
   const { user, accountType, loading: authLoading, signOut } = useAuth();
@@ -87,6 +88,45 @@ export default function Dashboard() {
       void fetchTrips();
     }, TRACKING_REFRESH_INTERVAL_MS);
 
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Auto-trigger batch ETA update every 2 minutes via the eta-updater Edge Function.
+  // One call covers ALL active trips — far more efficient than per-trip calls.
+  useEffect(() => {
+    if (!user) return;
+
+    const runEtaUpdater = () => {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = (
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) as string;
+      if (!supabaseUrl || !anonKey) return;
+
+      fetch(`${supabaseUrl}/functions/v1/eta-updater`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'apikey':        anonKey,
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({ triggeredBy: 'dashboard_cron' }),
+      })
+        .then((r) => r.json())
+        .then((result) => {
+          console.log('[ETA Updater]', result);
+          if ((result.processed ?? 0) > 0) {
+            // Refresh trip list to pull in the new ETAs from DB
+            void fetchTrips();
+          }
+        })
+        .catch((err) => console.warn('[ETA Updater] Failed:', err));
+    };
+
+    // Run immediately on mount, then every 2 minutes
+    runEtaUpdater();
+    const interval = setInterval(runEtaUpdater, ETA_UPDATER_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [user]);
 

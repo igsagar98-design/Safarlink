@@ -18,6 +18,7 @@ import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
 
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const ETA_UPDATER_INTERVAL_MS      = 2 * 60 * 1000;
 const STALE_AFTER_MS = 90 * 1000;
 const OFFLINE_AFTER_MS = 180 * 1000;
 
@@ -193,6 +194,38 @@ export default function CustomerTracking() {
     return () => clearInterval(interval);
   }, [token]);
 
+  // Auto-trigger eta-updater every 2 mins when tracking page is open.
+  // One batch call is far more efficient than per-trip calls.
+  useEffect(() => {
+    if (!trip || trip.status === 'delivered') return;
+
+    const runEtaUpdater = () => {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = (
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      ) as string;
+      if (!supabaseUrl || !anonKey) return;
+
+      fetch(`${supabaseUrl}/functions/v1/eta-updater`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({ triggeredBy: 'customer_tracking' }),
+      })
+        .then((r) => r.json())
+        .then((result) => { if ((result.processed ?? 0) > 0) void fetchTrip(); })
+        .catch((err) => console.warn('[ETA CustomerTracking]', err));
+    };
+
+    runEtaUpdater();
+    const interval = setInterval(runEtaUpdater, ETA_UPDATER_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [trip?.id, trip?.status]);
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
   }
@@ -226,17 +259,30 @@ export default function CustomerTracking() {
     {
       icon: Clock,
       label: 'Predicted ETA',
-      value: trip.predicted_arrival
-        ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm')
-        : (trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : 'Calculating...'),
+      value: (
+        <div className="flex flex-col">
+          <span>
+            {trip.predicted_eta_at 
+              ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
+              : (trip.predicted_arrival ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm') : 'Calculating...')}
+          </span>
+          {trip.eta_last_calculated_at && (
+            <span className="text-[10px] text-muted-foreground">
+              {trip.is_location_live ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.eta_last_calculated_at)})`}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       icon: AlertTriangle,
       label: 'Delay',
       value:
-        typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
-          ? `${trip.delay_minutes} min delayed`
-          : 'No delay predicted',
+        typeof trip.predicted_eta_minutes === 'number' // Or delay limit
+          ? (trip.delay_minutes && trip.delay_minutes > 0 ? `${trip.delay_minutes} min delayed` : 'No delay predicted')
+          : (typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
+              ? `${trip.delay_minutes} min delayed`
+              : 'No delay predicted'),
     },
     {
       icon: MapPin,

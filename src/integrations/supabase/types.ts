@@ -234,11 +234,14 @@ export type Database = {
           drop_longitude: number | null
           driver_name: string
           driver_phone: string
+          eta_last_calculated_at: string | null
           gps_tracking_link: string | null
           id: string
           is_active: boolean
+          is_location_live: boolean
           last_latitude: number | null
           last_location_name: string | null
+          last_location_received_at: string | null
           last_longitude: number | null
           last_update_at: string | null
           material: string
@@ -246,8 +249,11 @@ export type Database = {
           pickup_latitude: number | null
           pickup_longitude: number | null
           predicted_arrival: string | null
+          predicted_eta_at: string | null
+          predicted_eta_minutes: number | null
           planned_arrival: string
           delay_minutes: number | null
+          remaining_distance_meters: number | null
           status: Database["public"]["Enums"]["trip_status"]
           tracking_token: string
           transporter_company_id: string | null
@@ -268,11 +274,14 @@ export type Database = {
           drop_longitude?: number | null
           driver_name: string
           driver_phone: string
+          eta_last_calculated_at?: string | null
           gps_tracking_link?: string | null
           id?: string
           is_active?: boolean
+          is_location_live?: boolean
           last_latitude?: number | null
           last_location_name?: string | null
+          last_location_received_at?: string | null
           last_longitude?: number | null
           last_update_at?: string | null
           material: string
@@ -280,8 +289,11 @@ export type Database = {
           pickup_latitude?: number | null
           pickup_longitude?: number | null
           predicted_arrival?: string | null
+          predicted_eta_at?: string | null
+          predicted_eta_minutes?: number | null
           planned_arrival: string
           delay_minutes?: number | null
+          remaining_distance_meters?: number | null
           status?: Database["public"]["Enums"]["trip_status"]
           tracking_token?: string
           transporter_company_id?: string | null
@@ -302,11 +314,14 @@ export type Database = {
           drop_longitude?: number | null
           driver_name?: string
           driver_phone?: string
+          eta_last_calculated_at?: string | null
           gps_tracking_link?: string | null
           id?: string
           is_active?: boolean
+          is_location_live?: boolean
           last_latitude?: number | null
           last_location_name?: string | null
+          last_location_received_at?: string | null
           last_longitude?: number | null
           last_update_at?: string | null
           material?: string
@@ -314,8 +329,11 @@ export type Database = {
           pickup_latitude?: number | null
           pickup_longitude?: number | null
           predicted_arrival?: string | null
+          predicted_eta_at?: string | null
+          predicted_eta_minutes?: number | null
           planned_arrival?: string
           delay_minutes?: number | null
+          remaining_distance_meters?: number | null
           status?: Database["public"]["Enums"]["trip_status"]
           tracking_token?: string
           transporter_company_id?: string | null

@@ -390,17 +390,30 @@ export default function TripDetail({
     {
       icon: Clock,
       label: 'Predicted ETA',
-      value: trip.predicted_arrival
-        ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm')
-        : (trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM yyyy, HH:mm') : '—'),
+      value: (
+        <div className="flex flex-col">
+          <span>
+            {trip.predicted_eta_at 
+              ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
+              : (trip.predicted_arrival ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm') : '—')}
+          </span>
+          {trip.eta_last_calculated_at && (
+            <span className="text-[10px] text-muted-foreground">
+              {trip.is_location_live ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.eta_last_calculated_at)})`}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       icon: AlertTriangle,
       label: 'Delay',
       value:
-        typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
-          ? `${trip.delay_minutes} min delayed`
-          : 'No delay predicted',
+        typeof trip.predicted_eta_minutes === 'number' // Or delay limit
+          ? (trip.delay_minutes && trip.delay_minutes > 0 ? `${trip.delay_minutes} min delayed` : 'No delay predicted')
+          : (typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
+              ? `${trip.delay_minutes} min delayed`
+              : 'No delay predicted'),
     },
     {
       icon: MapPin,
@@ -444,16 +457,7 @@ export default function TripDetail({
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="font-medium truncate">{r.value}</span>
               {r.label === 'Predicted ETA' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 shrink-0"
-                  onClick={handleRefreshETA}
-                  disabled={isRefreshingETA}
-                  title="Force Refresh predicted ETA"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isRefreshingETA ? 'animate-spin' : ''}`} />
-                </Button>
+                <div className="h-6 w-6 shrink-0" />
               )}
             </div>
           </div>
