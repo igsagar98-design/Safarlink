@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Trip } from '@/components/TripCard';
-import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripEvent, type TripStopType, updateTrip, updateTripCreatedEventMetadata, predictTripDelay } from '@/lib/api';
+import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripEvent, type TripStopType, updateTrip, updateTripCreatedEventMetadata } from '@/lib/api';
 import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2, Hash, RefreshCw } from 'lucide-react';
+import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 import TripTimeline from '@/components/TripTimeline';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import TrackingMap from '@/components/TrackingMap';
 import {
   Select,
@@ -130,7 +131,6 @@ export default function TripDetail({
   const [eventsUnavailable, setEventsUnavailable] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isRefreshingETA, setIsRefreshingETA] = useState(false);
   const [additionalStops, setAdditionalStops] = useState<AdditionalStop[]>([]);
   const [form, setForm] = useState({
     vehicle_number: trip.vehicle_number,
@@ -221,7 +221,7 @@ export default function TripDetail({
   }, [customerLink, trip.vehicle_number]);
   const pickupPoint = toMapPoint(trip.pickup_latitude, trip.pickup_longitude);
   const dropPoint = toMapPoint(trip.drop_latitude, trip.drop_longitude);
-  const driverPoint = toMapPoint(trip.last_latitude, trip.last_longitude);
+  const driverPoint = toMapPoint(trip.last_driver_latitude, trip.last_driver_longitude);
   const hasTrackingMap = Boolean(pickupPoint || dropPoint || driverPoint);
 
   const copy = async (text: string, label: string) => {
@@ -239,29 +239,6 @@ export default function TripDetail({
 
   const set = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleRefreshETA = async () => {
-    if (typeof trip.last_latitude !== 'number' || typeof trip.last_longitude !== 'number') {
-      toast.error('Driver must have at least one location update to predict ETA');
-      return;
-    }
-
-    setIsRefreshingETA(true);
-    try {
-      await predictTripDelay({
-        tripId: trip.id,
-        currentLatitude: trip.last_latitude,
-        currentLongitude: trip.last_longitude,
-        force: true,
-      });
-      toast.success('ETA prediction triggered');
-    } catch (err: any) {
-      console.error('Failed to trigger ETA prediction:', err);
-      toast.error(err.message || 'Failed to trigger ETA prediction');
-    } finally {
-      setIsRefreshingETA(false);
-    }
   };
 
   const handleAddStop = () => {
@@ -386,6 +363,21 @@ export default function TripDetail({
     { icon: Package, label: 'Material', value: trip.material },
     { icon: MapPin, label: 'Origin', value: trip.origin },
     { icon: Navigation, label: 'Destination', value: trip.destination },
+    {
+      icon: Route,
+      label: 'Progress',
+      value: (
+        <div className="flex flex-col flex-1 gap-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <span>{trip.route_progress_percent || 0}%</span>
+            {trip.route_distance_meters && (
+              <span>{((trip.route_distance_meters - (trip.remaining_distance_meters || 0)) / 1000).toFixed(1)} / {(trip.route_distance_meters / 1000).toFixed(1)} km</span>
+            )}
+          </div>
+          <Progress value={trip.route_progress_percent || 0} className="h-1.5" />
+        </div>
+      )
+    },
     { icon: Clock, label: 'Planned Arrival', value: format(new Date(trip.planned_arrival), 'dd MMM yyyy, HH:mm') },
     {
       icon: Clock,
@@ -396,18 +388,8 @@ export default function TripDetail({
             <span className="font-medium">
               {trip.predicted_eta_at 
                 ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
-                : (trip.predicted_arrival ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm') : '—')}
+                : '—'}
             </span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-6 w-6 rounded-full" 
-              onClick={handleRefreshETA}
-              disabled={isRefreshingETA}
-              title="Recalculate smart ETA"
-            >
-              <RefreshCw className={`w-3 h-3 ${isRefreshingETA ? 'animate-spin' : ''}`} />
-            </Button>
           </div>
           {trip.eta_last_calculated_at && (
             <span className="text-[10px] text-muted-foreground mt-0.5">
@@ -432,7 +414,7 @@ export default function TripDetail({
       label: 'Last Location',
       value: trip.last_location_name || 'No updates yet',
     },
-    { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
+    { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_driver_location_at || trip.last_update_at) },
   ];
 
   const routeStops = [

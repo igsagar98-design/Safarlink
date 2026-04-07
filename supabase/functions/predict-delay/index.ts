@@ -184,10 +184,20 @@ Deno.serve(async (req) => {
       console.timeEnd(`google-api-${body.tripId}`);
       const isTimeout = gErr.name === 'AbortError';
       const gMsg = isTimeout ? 'Google API timeout (30s)' : gErr.message;
-      console.error(`[predict-delay] Google Fetch Error: ${gMsg}`);
       
-      return new Response(JSON.stringify({ error: gMsg }), {
-        status: isTimeout ? 504 : 502, // 504 for timeout, 502 for other network errors
+      const maskedUrl = googleUrl.replace(googleApiKey, 'REDACTED');
+      console.error(`[predict-delay] Google Fetch Error: ${gMsg} | URL: ${maskedUrl}`);
+      
+      return new Response(JSON.stringify({ 
+        error: gMsg, 
+        diagnostics: {
+          apiKeyLength: googleApiKey.length,
+          isTimeout,
+          origin,
+          destination: trip.destination
+        }
+      }), {
+        status: isTimeout ? 504 : 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

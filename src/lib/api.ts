@@ -25,6 +25,21 @@ export type TripEventType =
 // Keep optional trip_code for forward compatibility with custom backends.
 export type Trip = Tables<'trips'> & {
   trip_code?: string | null;
+  pickup_latitude?: number | null;
+  pickup_longitude?: number | null;
+  drop_latitude?: number | null;
+  drop_longitude?: number | null;
+  route_distance_meters?: number | null;
+  route_duration_seconds?: number | null;
+  route_polyline?: string | null;
+  last_driver_latitude?: number | null;
+  last_driver_longitude?: number | null;
+  last_driver_location_at?: string | null;
+  remaining_distance_meters?: number | null;
+  remaining_duration_seconds?: number | null;
+  route_progress_percent?: number | null;
+  is_live_tracking?: boolean;
+  last_eta_calculated_at?: string | null;
 };
 
 export interface CreateTripInput {
@@ -155,8 +170,8 @@ export interface RouteProgressResult {
 
 export interface PredictDelayInput {
   tripId: string;
-  currentLatitude: number;
-  currentLongitude: number;
+  latitude: number;
+  longitude: number;
   trackingToken?: string;
   force?: boolean;
 }
@@ -635,8 +650,8 @@ export async function postDriverLocationUpdate(
   const { error: locationError } = await supabase.functions.invoke('driver-location-update', {
     body: {
       tripId,
-      currentLatitude: latitude,
-      currentLongitude: longitude,
+      latitude,
+      longitude,
       trackingToken: options?.trackingToken,
     },
   });
@@ -700,15 +715,17 @@ export async function markTripDelivered(tripId: string): Promise<void> {
   });
 }
 
-export async function getRouteProgress(
-  input: RouteProgressInput
-): Promise<RouteProgressResult> {
-  const { data, error } = await supabase.functions.invoke('route-progress', {
-    body: input,
+export async function triggerTripBaseline(tripId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke('trip-baseline', {
+    body: { tripId },
   });
-
   if (error) throw error;
-  return data as RouteProgressResult;
+}
+
+export async function runTripBackfill(): Promise<any> {
+  const { data, error } = await supabase.functions.invoke('trip-backfill');
+  if (error) throw error;
+  return data;
 }
 
 export async function signIn(email: string, password: string): Promise<AuthError | null> {

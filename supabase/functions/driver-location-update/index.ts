@@ -1,16 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Driver Location Update
-//
-// Called by the driver's mobile app every 15 seconds.
-// Responsibilities:
-//   1. Update trip's last known coordinates
-//   2. Set last_location_received_at = NOW() and is_location_live = true
-//   3. Append the ping to trip_location_updates history
-//   4. Trigger ETA prediction immediately if this is the FIRST ping for the trip
-//      (subsequent predictions are handled by the eta-updater cron function)
-// ─────────────────────────────────────────────────────────────────────────────
+import { computeRoute } from '../_shared/google-routes.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -18,134 +7,154 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Statuses that block location processing
-const TERMINAL_STATUSES = ['delivered', 'cancelled'];
-
-type DriverLocationUpdateRequest = {
-  tripId: string;
-  currentLatitude: number;
-  currentLongitude: number;
-  trackingToken?: string;
-  force?: boolean;
-};
-
-const toLocationName = (lat: number, lng: number) =>
-  `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-}
-
+/**
+ * Driver Location Update (Centralized Logic)
+ * Responsibilities:
+ * 1. Store latest driver coordinates (every 30s)
+ * 2. Throttle ETA recalculation via Google Routes API (every 2m)
+ * 3. Update route progress percentage (0-100%)
+ * 4. Serve as the Single Source of Truth for both APK and Web App
+ */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
-  }
-
-  if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
+    return new Response(null, { headers: CORS_HEADERS });
   }
 
   try {
-    const supabaseUrl    = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const { tripId, latitude, longitude, trackingToken } = await req.json();
+    const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+    if (!googleApiKey || !supabaseUrl || !serviceRoleKey) {
+      throw new Error('Server configuration missing keys.');
     }
 
-    const body = (await req.json()) as DriverLocationUpdateRequest;
-
-    if (!body.tripId || !Number.isFinite(body.currentLatitude) || !Number.isFinite(body.currentLongitude)) {
-      return json({ error: 'tripId, currentLatitude, and currentLongitude are required.' }, 400);
+    if (!tripId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return new Response(JSON.stringify({ error: 'Missing required tracking data.' }), { status: 400 });
     }
 
-    const db = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // ── 1. Fetch trip ──────────────────────────────────────────────────────────
-    const { data: trip, error: tripError } = await db
+    // 1. Fetch current trip state
+    const { data: trip, error: fetchError } = await supabase
       .from('trips')
-      .select('id, tracking_token, status, last_location_received_at, eta_last_calculated_at')
-      .eq('id', body.tripId)
-      .maybeSingle();
+      .select('*')
+      .eq('id', tripId)
+      .single();
 
-    if (tripError) throw tripError;
-    if (!trip) return json({ error: 'Trip not found.' }, 404);
+    if (fetchError || !trip) throw new Error(`Trip ${tripId} not found.`);
 
-    if (body.trackingToken && trip.tracking_token !== body.trackingToken) {
-      return json({ error: 'Tracking token mismatch.' }, 403);
+    // Optional tracking token security check
+    if (trackingToken && trip.tracking_token !== trackingToken) {
+      return new Response(JSON.stringify({ error: 'Access denied.' }), { status: 403 });
     }
 
-    // Skip terminal trips
-    if (TERMINAL_STATUSES.includes(trip.status)) {
-      return json({ ok: true, skipped: `trip_${trip.status}` });
-    }
+    const now = new Date();
+    const nowIso = now.toISOString();
 
-    const now         = new Date().toISOString();
-    const locationName = toLocationName(body.currentLatitude, body.currentLongitude);
-
-    // ── 2. Update trip coordinates + mark location as live ────────────────────
-    const { error: updateError } = await db
+    // 2. PRIMARY: Update driver coordinates into the SINGLE SOURCE OF TRUTH fields
+    const { error: locUpdateError } = await supabase
       .from('trips')
       .update({
-        last_latitude:              body.currentLatitude,
-        last_longitude:             body.currentLongitude,
-        last_location_name:         locationName,
-        last_update_at:             now,
-        last_location_received_at:  now,
-        is_location_live:           true,
+        last_driver_latitude: latitude,
+        last_driver_longitude: longitude,
+        last_driver_location_at: nowIso,
+        is_live_tracking: true,
+        // Sync legacy columns to maintain compatibility with existing tracking views if any
+        last_latitude: latitude,
+        last_longitude: longitude,
+        last_update_at: nowIso,
+        is_location_live: true
       })
-      .eq('id', trip.id);
+      .eq('id', tripId);
 
-    if (updateError) throw updateError;
+    if (locUpdateError) throw locUpdateError;
 
-    // ── 3. Append to history ───────────────────────────────────────────────────
-    await db.from('trip_location_updates').insert({
-      trip_id:       trip.id,
-      latitude:      body.currentLatitude,
-      longitude:     body.currentLongitude,
-      location_name: locationName,
-      recorded_at:   now,
+    // Log the update in historical history
+    await supabase.from('trip_location_updates').insert({
+      trip_id: tripId,
+      latitude,
+      longitude,
+      recorded_at: nowIso
     });
 
-    // ── 4. First-ping ETA trigger ──────────────────────────────────────────────
-    // If this trip has never had a location before (no previous GPS ping),
-    // trigger ETA calculation immediately without waiting for the 2-min cron.
-    const isFirstPing     = !trip.last_location_received_at;
-    const isForced        = body.force === true;
-    const hasNeverPredict = !trip.eta_last_calculated_at;
+    // 3. THROTTLED RECALCULATION: Check if we should call Google (2 minute cooldown)
+    const lastCalc = trip.last_eta_calculated_at ? new Date(trip.last_eta_calculated_at) : new Date(0);
+    const cooldownMs = 2 * 60 * 1000;
+    const timeSinceLastCalc = now.getTime() - lastCalc.getTime();
 
-    if (isFirstPing || isForced || hasNeverPredict) {
-      console.log(`[driver-location-update] First ping / forced — triggering immediate ETA for trip ${trip.id}`);
-
-      // Trigger eta-updater directly (it will process this trip)
-      fetch(`${supabaseUrl}/functions/v1/eta-updater`, {
-        method:  'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ triggeredBy: 'first_ping', tripId: trip.id }),
-      }).catch((err) => {
-        console.warn('[driver-location-update] eta-updater trigger failed:', err.message);
+    // Only recalculate if trip is active and cooldown has passed
+    if (trip.status !== 'active' || timeSinceLastCalc < cooldownMs) {
+      console.log(`[driver-location-update] Throttling ETA for trip ${tripId}. Time since last calc: ${Math.round(timeSinceLastCalc/1000)}s`);
+      return new Response(JSON.stringify({ 
+        ok: true, 
+        updated: 'location_only',
+        nextEtaRefreshSec: Math.max(0, Math.ceil((cooldownMs - timeSinceLastCalc) / 1000))
+      }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
     }
 
-    return json({
-      ok:              true,
-      tripId:          trip.id,
-      lastLatitude:    body.currentLatitude,
-      lastLongitude:   body.currentLongitude,
-      lastLocationName: locationName,
-      lastUpdateAt:    now,
-      isFirstPing,
-    });
+    // 4. RECALCULATION: Call Google Routes API
+    console.log(`[driver-location-update] Refreshing metrics for trip ${tripId}`);
+    
+    // Safety check: ensure baseline exists
+    if (!trip.drop_latitude || !trip.drop_longitude) {
+      console.warn(`[driver-location-update] Trip ${tripId} missing drop coordinates. Cannot compute live metrics.`);
+      return new Response(JSON.stringify({ ok: true, warning: 'Baseline missing' }), { headers: CORS_HEADERS });
+    }
 
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unexpected error';
-    console.error('[driver-location-update] Error:', message);
-    return json({ error: message }, 500);
+    try {
+      const liveRoute = await computeRoute(
+        { lat: latitude, lng: longitude },
+        { lat: trip.drop_latitude, lng: trip.drop_longitude },
+        googleApiKey
+      );
+
+      // Calculation of Route Progress
+      const baselineDist = trip.route_distance_meters || liveRoute.distanceMeters;
+      const remainingDist = liveRoute.distanceMeters;
+      
+      // Progress Formula: ((Total - Remaining) / Total) * 100
+      let progress = ((baselineDist - remainingDist) / baselineDist) * 100;
+      progress = Math.max(0, Math.min(100, progress)); // Clamp between 0-100
+
+      const predictedEtaAt = new Date(now.getTime() + liveRoute.durationSeconds * 1000).toISOString();
+
+      const { error: metricsError } = await supabase
+        .from('trips')
+        .update({
+          remaining_distance_meters: remainingDist,
+          remaining_duration_seconds: liveRoute.durationSeconds,
+          predicted_eta_at: predictedEtaAt,
+          route_progress_percent: progress.toFixed(2),
+          last_eta_calculated_at: nowIso
+        })
+        .eq('id', tripId);
+
+      if (metricsError) throw metricsError;
+
+      return new Response(JSON.stringify({ 
+        ok: true, 
+        updated: 'all_metrics',
+        progress: progress.toFixed(2),
+        eta: predictedEtaAt
+      }), {
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+
+    } catch (gErr: any) {
+      console.error(`[driver-location-update] Google API Failure: ${gErr.message}`);
+      // Fallback: Preserve last known state on Google failure to avoid UI jumps
+      return new Response(JSON.stringify({ ok: true, error: 'Google API unreachable' }), { headers: CORS_HEADERS });
+    }
+
+  } catch (err: any) {
+    console.error(`[driver-location-update] Fatal: ${err.message}`);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
   }
 });

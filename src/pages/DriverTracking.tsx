@@ -2,13 +2,11 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getDriverTripByToken,
-  getRouteProgress,
   markTripArrived,
   markTripDelivered,
   postTripEvent,
   postDriverLocationUpdate,
   postDriverStatusUpdate,
-  type RouteProgressResult,
   type Trip,
   type TripStatus,
 } from '@/lib/api';
@@ -45,7 +43,6 @@ export default function DriverTracking() {
   const [geoPermissionState, setGeoPermissionState] = useState<PermissionStateLike>('unsupported');
   const [currentStatus, setCurrentStatus] = useState<DriverStatus>('on_time');
   const [selectedTripAction, setSelectedTripAction] = useState<TripActionSelection>(null);
-  const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
   const openedEventLoggedRef = useRef(false);
   const trackingStartedLoggedRef = useRef(false);
   const trackingPausedLoggedRef = useRef(false);
@@ -56,26 +53,6 @@ export default function DriverTracking() {
 
   const formatKm = (meters: number) => `${(meters / 1000).toFixed(1)} km`;
 
-  const refreshRouteProgress = useCallback(async (nextTrip: Trip) => {
-    try {
-      const progress = await getRouteProgress({
-        origin: nextTrip.origin,
-        destination: nextTrip.destination,
-        currentLatitude: nextTrip.last_latitude,
-        currentLongitude: nextTrip.last_longitude,
-      });
-      setRouteProgress(progress);
-    } catch (err: unknown) {
-      console.error('Route progress failed with input:', {
-        origin: nextTrip.origin,
-        destination: nextTrip.destination,
-        lat: nextTrip.last_latitude,
-        lng: nextTrip.last_longitude,
-      });
-      console.error('Error details:', err instanceof Error ? err.message : String(err));
-      setRouteProgress(null);
-    }
-  }, []);
 
   const fetchTrip = useCallback(async () => {
     if (!token) return;
@@ -91,7 +68,6 @@ export default function DriverTracking() {
       setCurrentStatus(data.status === 'late' ? 'late' : data.status === 'at_risk' ? 'at_risk' : 'on_time');
       setSelectedTripAction(data.status === 'delivered' ? 'delivered' : null);
       setError('');
-      await refreshRouteProgress(data);
 
       if (!openedEventLoggedRef.current) {
         openedEventLoggedRef.current = true;
@@ -101,12 +77,10 @@ export default function DriverTracking() {
           // Non-blocking event logging for timeline.
         });
       }
-    } catch {
-      setError('Trip not found or invalid link.');
     } finally {
       setLoading(false);
     }
-  }, [refreshRouteProgress, token]);
+  }, [token]);
 
   // Fetch trip by tracking token
   useEffect(() => {
@@ -127,13 +101,12 @@ export default function DriverTracking() {
       setLastLocationSentAt(sentAt);
       const nextTrip = {
         ...trip,
-        last_latitude: lat,
-        last_longitude: lng,
+        last_driver_latitude: lat,
+        last_driver_longitude: lng,
         last_location_name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-        last_update_at: sentAt,
+        last_driver_location_at: sentAt,
       };
       setTrip(nextTrip);
-      await refreshRouteProgress(nextTrip);
 
       if (!trackingStartedLoggedRef.current) {
         trackingStartedLoggedRef.current = true;
@@ -151,13 +124,10 @@ export default function DriverTracking() {
       }
 
       return true;
-    } catch {
-      setLocationUpdateDelayed(true);
-      return false;
     } finally {
       setIsSendingLocation(false);
     }
-  }, [refreshRouteProgress, trip]);
+  }, [trip]);
 
   const requestCurrentLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -450,8 +420,8 @@ export default function DriverTracking() {
               : null
           }
           driver={
-            typeof trip.last_latitude === 'number' && typeof trip.last_longitude === 'number'
-              ? { lat: trip.last_latitude, lng: trip.last_longitude }
+            typeof trip.last_driver_latitude === 'number' && typeof trip.last_driver_longitude === 'number'
+              ? { lat: trip.last_driver_latitude, lng: trip.last_driver_longitude }
               : null
           }
           zoom={11}
@@ -463,16 +433,16 @@ export default function DriverTracking() {
             <span>{trip.origin}</span>
             <span>{trip.destination}</span>
           </div>
-          <Progress value={routeProgress?.progressPercent ?? 0} className="h-2" />
+          <Progress value={trip.route_progress_percent || 0} className="h-2" />
           <p className="text-xs text-center text-muted-foreground">
-            {routeProgress
-              ? `${routeProgress.progressPercent}% route progress`
-              : 'Route progress unavailable'}
+            {trip.route_progress_percent !== null 
+              ? `${trip.route_progress_percent}% route progress`
+              : 'Route progress calculating...'}
           </p>
-          {routeProgress && (
+          {trip.route_distance_meters && (
             <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-1">
-              <p>Total distance: {formatKm(routeProgress.totalDistanceMeters)}</p>
-              <p>Remaining: {formatKm(routeProgress.remainingDistanceMeters)}</p>
+              <p>Total distance: {formatKm(trip.route_distance_meters)}</p>
+              <p>Remaining: {trip.remaining_distance_meters ? formatKm(trip.remaining_distance_meters) : 'Calculating...'}</p>
             </div>
           )}
         </div>
@@ -596,10 +566,24 @@ export default function DriverTracking() {
               variant={selectedTripAction === 'delivered' || trip.status === 'delivered' ? 'default' : 'outline'}
               size="sm"
               onClick={handleDelivered}
-              disabled={trip.status === 'delivered'}
+              disabled={
+                trip.status === 'delivered' || 
+                (trip.route_progress_percent !== null && trip.route_progress_percent < 95) ||
+                (trip.remaining_distance_meters !== null && trip.remaining_distance_meters > 500)
+              }
             >
-              Delivered
+              {trip.status === 'delivered' ? 'Delivered' : 'Mark as Delivered'}
             </Button>
+            {(trip.route_progress_percent !== null && trip.route_progress_percent < 95) && (
+              <p className="text-[10px] text-center text-muted-foreground">
+                Progress must be ≥ 95% to mark delivered
+              </p>
+            )}
+            {(trip.remaining_distance_meters !== null && trip.remaining_distance_meters > 500) && (
+              <p className="text-[10px] text-center text-muted-foreground">
+                Must be within 500m of destination
+              </p>
+            )}
           </div>
         </div>
       </div>
