@@ -236,9 +236,9 @@ export default function CustomerTracking() {
               ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
               : 'Calculating...'}
           </span>
-          {trip.last_eta_calculated_at && (
+          {trip.last_driver_location_at && (
             <span className="text-[10px] text-muted-foreground">
-              {trip.is_live_tracking ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.last_eta_calculated_at)})`}
+              {trip.is_live_tracking ? 'Live Tracking' : `Last update ${timeAgo(trip.last_driver_location_at)}`}
             </span>
           )}
         </div>
