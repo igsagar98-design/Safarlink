@@ -2,7 +2,8 @@ export type TripStatus = 'on_time' | 'at_risk' | 'late' | 'delivered';
 
 interface TripForRisk {
   planned_arrival: string;
-  current_eta: string | null;
+  predicted_eta_at?: string | null;
+  current_eta?: string | null;
   status: TripStatus;
 }
 
@@ -82,7 +83,8 @@ export function calculateTripStatus(trip: TripForRisk): TripStatus {
   const now = new Date();
 
   const plannedArrivalDate = parseTripDate(trip.planned_arrival);
-  const predictedEtaDate = parseTripDate(trip.current_eta);
+  // Source the predicted ETA from the unified backend field first, fall back to legacy if needed
+  const predictedEtaDate = parseTripDate(trip.predicted_eta_at || trip.current_eta);
 
   const plannedStatus = plannedArrivalDate
     ? statusFromTargetTime(plannedArrivalDate, now)

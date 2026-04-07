@@ -602,9 +602,14 @@ async function hydrateTripWithLatestLocationUpdate(trip: Trip | null): Promise<T
 
     return {
       ...trip,
+      // Unified backend fields
+      last_driver_latitude: data.latitude,
+      last_driver_longitude: data.longitude,
+      last_location_name: data.location_name,
+      last_driver_location_at: data.recorded_at,
+      // Legacy compatibility fields
       last_latitude: data.latitude,
       last_longitude: data.longitude,
-      last_location_name: data.location_name,
       last_update_at: data.recorded_at,
     };
   } catch {

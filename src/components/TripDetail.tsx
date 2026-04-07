@@ -395,7 +395,7 @@ export default function TripDetail({
           </div>
           {trip.last_eta_calculated_at && (
             <span className="text-[10px] text-muted-foreground mt-0.5">
-              {trip.is_location_live ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.last_eta_calculated_at)})`}
+              {trip.is_live_tracking ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.last_eta_calculated_at)})`}
             </span>
           )}
         </div>
