@@ -2,10 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getCustomerTripByToken,
-  getRouteProgress,
   listTripEvents,
   postTripEvent,
-  type RouteProgressResult,
   type TripEvent,
   type Trip,
 } from '@/lib/api';
@@ -18,7 +16,6 @@ import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
 
 const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
-const ETA_UPDATER_INTERVAL_MS      = 2 * 60 * 1000;
 const STALE_AFTER_MS = 90 * 1000;
 const OFFLINE_AFTER_MS = 180 * 1000;
 
@@ -34,7 +31,6 @@ const getTrackingMode = (tripData: Trip): TrackingMode =>
 export default function CustomerTracking() {
   const { token } = useParams<{ token: string }>();
   const [trip, setTrip] = useState<Trip | null>(null);
-  const [routeProgress, setRouteProgress] = useState<RouteProgressResult | null>(null);
   const [events, setEvents] = useState<TripEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -158,29 +154,9 @@ export default function CustomerTracking() {
       } catch {
         setEvents([]);
       }
-
-      try {
-        const progress = await getRouteProgress({
-          origin: data.origin,
-          destination: data.destination,
-          currentLatitude: data.last_latitude,
-          currentLongitude: data.last_longitude,
-        });
-        setRouteProgress(progress);
-          } catch (err) {
-              console.error('Route progress failed with input:', {
-                origin: data.origin,
-                destination: data.destination,
-                lat: data.last_latitude,
-                lng: data.last_longitude,
-              });
-              console.error('Error details:', err instanceof Error ? err.message : String(err));
-              setRouteProgress(null);
-      }
     } catch {
       setError('Tracking link not found.');
       setTrip(null);
-      setRouteProgress(null);
       setEvents([]);
     } finally {
       setLoading(false);
@@ -194,37 +170,6 @@ export default function CustomerTracking() {
     return () => clearInterval(interval);
   }, [token]);
 
-  // Auto-trigger eta-updater every 2 mins when tracking page is open.
-  // One batch call is far more efficient than per-trip calls.
-  useEffect(() => {
-    if (!trip || trip.status === 'delivered') return;
-
-    const runEtaUpdater = () => {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const anonKey = (
-        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-        import.meta.env.VITE_SUPABASE_ANON_KEY
-      ) as string;
-      if (!supabaseUrl || !anonKey) return;
-
-      fetch(`${supabaseUrl}/functions/v1/eta-updater`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': anonKey,
-          'Authorization': `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify({ triggeredBy: 'customer_tracking' }),
-      })
-        .then((r) => r.json())
-        .then((result) => { if ((result.processed ?? 0) > 0) void fetchTrip(); })
-        .catch((err) => console.warn('[ETA CustomerTracking]', err));
-    };
-
-    runEtaUpdater();
-    const interval = setInterval(runEtaUpdater, ETA_UPDATER_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [trip?.id, trip?.status]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
@@ -367,16 +312,18 @@ export default function CustomerTracking() {
             <span>{trip.origin}</span>
             <span>{trip.destination}</span>
           </div>
-          <Progress value={routeProgress?.progressPercent ?? 0} className="h-2" />
+          <Progress value={trip.route_progress_percent ?? 0} className="h-2" />
           <p className="text-xs text-center text-muted-foreground">
-            {routeProgress
-              ? `${routeProgress.progressPercent}% route progress`
+            {trip.route_progress_percent !== null && trip.route_progress_percent !== undefined
+              ? `${trip.route_progress_percent}% route progress`
               : 'Route progress unavailable'}
           </p>
-          {routeProgress && (
+          {(trip.route_distance_meters || trip.remaining_distance_meters) && (
             <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-1">
-              <p>Total distance: {formatKm(routeProgress.totalDistanceMeters)}</p>
-              <p>Remaining: {formatKm(routeProgress.remainingDistanceMeters)}</p>
+              {trip.route_distance_meters && <p>Total distance: {formatKm(trip.route_distance_meters)}</p>}
+              {trip.remaining_distance_meters !== null && trip.remaining_distance_meters !== undefined && (
+                <p>Remaining: {formatKm(trip.remaining_distance_meters)}</p>
+              )}
             </div>
           )}
         </div>

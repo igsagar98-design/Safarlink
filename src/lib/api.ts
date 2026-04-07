@@ -153,20 +153,6 @@ export interface TripStopInput {
   longitude?: number | null;
 }
 
-export interface RouteProgressInput {
-  origin: string;
-  destination: string;
-  currentLatitude?: number | null;
-  currentLongitude?: number | null;
-}
-
-export interface RouteProgressResult {
-  totalDistanceMeters: number;
-  remainingDistanceMeters: number;
-  coveredDistanceMeters: number;
-  progressPercent: number;
-  source: 'current_location' | 'origin_fallback';
-}
 
 export interface PredictDelayInput {
   tripId: string;
@@ -668,8 +654,8 @@ export async function postDriverLocationUpdate(
     if (fallbackError) throw fallbackError;
   }
 
-  // ETA updates are now handled by the automated eta-updater function.
-  // driver-location-update triggers it on first ping, and CustomerTracking polls it.
+  // ETA updates are handled by the automated backend pipeline.
+  // driver-location-update triggers recalculation on the backend when location is shared.
 }
 
 export async function predictTripDelay(input: PredictDelayInput): Promise<void> {
