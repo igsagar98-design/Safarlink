@@ -21,7 +21,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tripId, latitude, longitude, trackingToken } = await req.json();
+    const { tripId, latitude, longitude, currentLatitude, currentLongitude, trackingToken } = await req.json();
+    
+    // APK uses currentLatitude/currentLongitude, Backend uses latitude/longitude. Handle both.
+    const lat = latitude ?? currentLatitude;
+    const lng = longitude ?? currentLongitude;
     const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim();
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
@@ -30,7 +34,7 @@ Deno.serve(async (req) => {
       throw new Error('Server configuration missing keys.');
     }
 
-    if (!tripId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    if (!tripId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       return new Response(JSON.stringify({ error: 'Missing required tracking data.' }), { status: 400 });
     }
 
@@ -57,13 +61,13 @@ Deno.serve(async (req) => {
     const { error: locUpdateError } = await supabase
       .from('trips')
       .update({
-        last_driver_latitude: latitude,
-        last_driver_longitude: longitude,
+        last_driver_latitude: lat,
+        last_driver_longitude: lng,
         last_driver_location_at: nowIso,
         is_live_tracking: true,
         // Sync legacy columns to maintain compatibility with existing tracking views if any
-        last_latitude: latitude,
-        last_longitude: longitude,
+        last_latitude: lat,
+        last_longitude: lng,
         last_update_at: nowIso,
         is_location_live: true
       })
@@ -74,8 +78,8 @@ Deno.serve(async (req) => {
     // Log the update in historical history
     await supabase.from('trip_location_updates').insert({
       trip_id: tripId,
-      latitude,
-      longitude,
+      latitude: lat,
+      longitude: lng,
       recorded_at: nowIso
     });
 
@@ -84,8 +88,9 @@ Deno.serve(async (req) => {
     const cooldownMs = 2 * 60 * 1000;
     const timeSinceLastCalc = now.getTime() - lastCalc.getTime();
 
-    // Only recalculate if trip is active and cooldown has passed
-    if (trip.status !== 'active' || timeSinceLastCalc < cooldownMs) {
+    // Only recalculate if trip is active (on_time, at_risk, late) and cooldown has passed
+    const activeStatuses = ['on_time', 'at_risk', 'late', 'active'];
+    if (!activeStatuses.includes(trip.status) || timeSinceLastCalc < cooldownMs) {
       console.log(`[driver-location-update] Throttling ETA for trip ${tripId}. Time since last calc: ${Math.round(timeSinceLastCalc/1000)}s`);
       return new Response(JSON.stringify({ 
         ok: true, 
@@ -107,7 +112,7 @@ Deno.serve(async (req) => {
 
     try {
       const liveRoute = await computeRoute(
-        { lat: latitude, lng: longitude },
+        { lat: lat, lng: lng },
         { lat: trip.drop_latitude, lng: trip.drop_longitude },
         googleApiKey
       );
@@ -139,7 +144,9 @@ Deno.serve(async (req) => {
         ok: true, 
         updated: 'all_metrics',
         progress: progress.toFixed(2),
-        eta: predictedEtaAt
+        eta: predictedEtaAt,
+        lat,
+        lng
       }), {
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
