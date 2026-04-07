@@ -2,11 +2,18 @@
 -- Enables Supabase Realtime for the trips table to allow the webapp to receive instant updates.
 
 begin;
-  -- Remove the table from the publication if it exists (idempotent)
-  alter publication supabase_realtime drop table if exists public.trips;
-  
-  -- Add the table to the publication
-  alter publication supabase_realtime add table public.trips;
+  -- Safely add the table to the replication publication if it is not already there
+  do $$
+  begin
+    if not exists (
+      select 1 from pg_publication_tables 
+      where pubname = 'supabase_realtime' 
+      and schemaname = 'public' 
+      and tablename = 'trips'
+    ) then
+      alter publication supabase_realtime add table public.trips;
+    end if;
+  end $$;
 commit;
 
 -- Confirming replication is set to 'FULL' to ensure all column changes (including ETAs) are sent.
