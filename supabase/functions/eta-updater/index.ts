@@ -149,16 +149,18 @@ Deno.serve(async (req) => {
 
     console.log(`[eta-updater] Processing trip ${tripId}: origin=${origin} dest=${trip.destination}`);
 
-    // Use a 5s timeout for the fetch call
+    // Use a 30s timeout for the fetch call (increased for reliability)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
+      console.time(`google-api-${tripId}`);
       // ── 3. Call Google Directions API ───────────────────────────────────────
       const googleUrl = `https://maps.googleapis.com/maps/api/directions/json` +
         `?origin=${origin}&destination=${destination}&mode=driving&key=${googleApiKey}`;
 
       const gRes = await fetch(googleUrl, { signal: controller.signal });
+      console.timeEnd(`google-api-${tripId}`);
       clearTimeout(timeoutId);
 
       if (!gRes.ok) {

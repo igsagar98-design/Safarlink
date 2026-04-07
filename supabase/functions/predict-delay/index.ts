@@ -80,12 +80,14 @@ Deno.serve(async (req) => {
 
     console.log(`[predict-delay] Calling Google Directions: origin=${origin}, destination=${trip.destination}`);
 
-    // Use a 5s timeout for the fetch call
+    // Use a 30s timeout for the fetch call (requested by user to handle latencies)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
+      console.time(`google-api-${body.tripId}`);
       const directionsResponse = await fetch(googleUrl, { signal: controller.signal });
+      console.timeEnd(`google-api-${body.tripId}`);
       clearTimeout(timeoutId);
       
       if (!directionsResponse.ok) {
@@ -171,7 +173,8 @@ Deno.serve(async (req) => {
       );
 
     } catch (gErr: any) {
-      const gMsg = gErr.name === 'AbortError' ? 'Google API timeout (5s)' : gErr.message;
+      console.timeEnd(`google-api-${body.tripId}`); // Ensure timer ends even on catch
+      const gMsg = gErr.name === 'AbortError' ? 'Google API timeout (30s)' : gErr.message;
       console.error(`[predict-delay] Google Fetch Error: ${gMsg}`);
       return new Response(JSON.stringify({ error: gMsg }), {
         status: 504, // Gateway Timeout
