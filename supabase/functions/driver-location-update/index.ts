@@ -88,8 +88,9 @@ Deno.serve(async (req) => {
     const cooldownMs = 2 * 60 * 1000;
     const timeSinceLastCalc = now.getTime() - lastCalc.getTime();
 
-    // Only recalculate if trip is active (on_time, at_risk, late) and cooldown has passed
-    const activeStatuses = ['on_time', 'at_risk', 'late', 'active'];
+    // Only recalculate if trip is active and cooldown has passed.
+    // Includes all mobile app driving states: on_route, reached_pickup, arrived_destination
+    const activeStatuses = ['on_time', 'at_risk', 'late', 'active', 'validated', 'reached_pickup', 'on_route', 'arrived_destination'];
     if (!activeStatuses.includes(trip.status) || timeSinceLastCalc < cooldownMs) {
       console.log(`[driver-location-update] Throttling ETA for trip ${tripId}. Time since last calc: ${Math.round(timeSinceLastCalc/1000)}s`);
       return new Response(JSON.stringify({ 
