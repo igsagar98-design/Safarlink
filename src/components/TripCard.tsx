@@ -42,13 +42,19 @@ export default function TripCard({ trip, onSelect }: Props) {
         </div>
         <div className="flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5" />
-          <span>ETA: {trip.current_eta ? format(new Date(trip.current_eta), 'dd MMM, HH:mm') : format(new Date(trip.planned_arrival), 'dd MMM, HH:mm')}</span>
+          <span>
+            ETA: {trip.predicted_eta_at 
+              ? format(new Date(trip.predicted_eta_at), 'dd MMM, HH:mm') 
+              : format(new Date(trip.planned_arrival), 'dd MMM, HH:mm')}
+          </span>
         </div>
       </div>
 
       <div className="mt-3 pt-2 border-t flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{trip.last_location_name || 'No location yet'}</span>
-        <span className="text-muted-foreground">{timeAgo(trip.last_update_at)}</span>
+        <span className="text-muted-foreground">
+          {timeAgo(trip.last_driver_location_at || trip.last_update_at)}
+        </span>
       </div>
     </button>
   );

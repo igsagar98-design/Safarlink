@@ -14,8 +14,9 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import TripTimeline from '@/components/TripTimeline';
 import TrackingMap from '@/components/TrackingMap';
+import { supabase } from '@/integrations/supabase/client';
 
-const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const TRACKING_REFRESH_INTERVAL_MS = 30 * 1000;
 const STALE_AFTER_MS = 90 * 1000;
 const OFFLINE_AFTER_MS = 180 * 1000;
 
@@ -170,6 +171,30 @@ export default function CustomerTracking() {
     return () => clearInterval(interval);
   }, [token]);
 
+  useEffect(() => {
+    if (!trip?.id) return;
+
+    const channel = supabase
+      .channel(`customer-tracking-${trip.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'trips',
+          filter: `id=eq.${trip.id}`,
+        },
+        () => {
+          void fetchTrip();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [trip?.id]);
+
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Loading…</p></div>;
@@ -189,7 +214,7 @@ export default function CustomerTracking() {
   const status = calculateTripStatus(trip);
   const trackingState = getTrackingState(trip, events);
   const trackingMode = getTrackingMode(trip);
-  const hasDriverCoordinates = hasCoordinatePair(trip.last_latitude, trip.last_longitude);
+  const hasDriverCoordinates = hasCoordinatePair(trip.last_driver_latitude, trip.last_driver_longitude);
   const shouldShowExternalTrackingLink =
     trackingMode === 'external_gps_link' && Boolean(trip.gps_tracking_link) && !hasDriverCoordinates;
   const locationHealth = getLocationHealth(trip, trackingState, trackingMode);
@@ -209,7 +234,7 @@ export default function CustomerTracking() {
           <span>
             {trip.predicted_eta_at 
               ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
-              : (trip.predicted_arrival ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm') : 'Calculating...')}
+              : 'Calculating...'}
           </span>
           {trip.eta_last_calculated_at && (
             <span className="text-[10px] text-muted-foreground">
@@ -238,7 +263,7 @@ export default function CustomerTracking() {
             ? 'Live tracking available via GPS link'
             : 'Awaiting first driver location')),
     },
-    { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_update_at) },
+    { icon: Clock, label: 'Last Update', value: timeAgo(trip.last_driver_location_at || trip.last_update_at) },
   ];
 
   return (
@@ -285,7 +310,7 @@ export default function CustomerTracking() {
           }
           driver={
             hasDriverCoordinates
-              ? { lat: trip.last_latitude, lng: trip.last_longitude }
+              ? { lat: trip.last_driver_latitude!, lng: trip.last_driver_longitude! }
               : null
           }
           zoom={10}
@@ -345,7 +370,7 @@ export default function CustomerTracking() {
         </div>
 
         <p className="text-xs text-center text-muted-foreground">
-          Auto-refreshes every 15 seconds{lastPolledAt ? ` • Last sync ${format(new Date(lastPolledAt), 'HH:mm:ss')}` : ''}
+          Live updates active (Realtime){lastPolledAt ? ` • Last sync ${format(new Date(lastPolledAt), 'HH:mm:ss')}` : ''}
         </p>
       </div>
     </div>

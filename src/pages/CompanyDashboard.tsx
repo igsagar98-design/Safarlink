@@ -16,11 +16,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Truck, CheckCircle, AlertTriangle, XCircle, LogOut, Search, Building2, UserCircle2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { getMyProfile } from '@/lib/api';
 import { toast } from 'sonner';
 
 const ALL_TRANSPORTERS_VALUE = '__all_transporters__';
 const ALL_STATUS_VALUE = '__all_status__';
-const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const TRACKING_REFRESH_INTERVAL_MS = 60 * 1000; // 60s fallback for resilience
 
 type ComputedStatus = 'on_time' | 'at_risk' | 'late' | 'delivered';
 
@@ -48,8 +50,8 @@ export default function CompanyDashboard() {
     }
   }, [user, accountType, authLoading, navigate]);
 
-  const fetchTrips = async () => {
-    setLoading(true);
+  const fetchTrips = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const data = await listMyCompanyTrips();
       setTrips(data);
@@ -57,24 +59,54 @@ export default function CompanyDashboard() {
       const message = error instanceof Error ? error.message : 'Unable to fetch company trips.';
       toast.error(message);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
     if (user && accountType === 'company') {
-      fetchTrips();
+      fetchTrips(true);
     }
   }, [user, accountType]);
 
   useEffect(() => {
     if (!user || accountType !== 'company') return;
 
+    let channelHandle: ReturnType<typeof supabase.channel> | null = null;
+
+    const setupRealtime = async () => {
+      const profile = await getMyProfile();
+      if (!profile?.company_id) return;
+
+      channelHandle = supabase
+        .channel('company-trips-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'trips',
+            filter: `company_id=eq.${profile.company_id}`,
+          },
+          () => {
+            void fetchTrips(false);
+          }
+        )
+        .subscribe();
+    };
+
+    void setupRealtime();
+
     const interval = setInterval(() => {
-      void fetchTrips();
+      void fetchTrips(false);
     }, TRACKING_REFRESH_INTERVAL_MS);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (channelHandle) {
+        void supabase.removeChannel(channelHandle);
+      }
+      clearInterval(interval);
+    };
   }, [user, accountType]);
 
   const statusByTrip = useMemo(() => {
@@ -173,7 +205,7 @@ export default function CompanyDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={fetchTrips}>Refresh</Button>
+            <Button variant="outline" size="sm" onClick={() => fetchTrips(true)}>Refresh</Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/company-profile')}>
               <UserCircle2 className="w-4 h-4" />
             </Button>

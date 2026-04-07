@@ -371,7 +371,9 @@ export default function TripDetail({
           <div className="flex items-center justify-between text-[11px]">
             <span>{trip.route_progress_percent || 0}%</span>
             {trip.route_distance_meters && (
-              <span>{((trip.route_distance_meters - (trip.remaining_distance_meters || 0)) / 1000).toFixed(1)} / {(trip.route_distance_meters / 1000).toFixed(1)} km</span>
+              <span className="text-muted-foreground font-normal">
+                {((trip.route_distance_meters - (trip.remaining_distance_meters || 0)) / 1000).toFixed(1)} / {(trip.route_distance_meters / 1000).toFixed(1)} km
+              </span>
             )}
           </div>
           <Progress value={trip.route_progress_percent || 0} className="h-1.5" />
@@ -391,9 +393,9 @@ export default function TripDetail({
                 : '—'}
             </span>
           </div>
-          {trip.eta_last_calculated_at && (
+          {trip.last_eta_calculated_at && (
             <span className="text-[10px] text-muted-foreground mt-0.5">
-              {trip.is_location_live ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.eta_last_calculated_at)})`}
+              {trip.is_location_live ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.last_eta_calculated_at)})`}
             </span>
           )}
         </div>
@@ -403,11 +405,9 @@ export default function TripDetail({
       icon: AlertTriangle,
       label: 'Delay',
       value:
-        typeof trip.predicted_eta_minutes === 'number' // Or delay limit
-          ? (trip.delay_minutes && trip.delay_minutes > 0 ? `${trip.delay_minutes} min delayed` : 'No delay predicted')
-          : (typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
-              ? `${trip.delay_minutes} min delayed`
-              : 'No delay predicted'),
+        typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
+          ? `${trip.delay_minutes} min delayed`
+          : 'No delay predicted',
     },
     {
       icon: MapPin,

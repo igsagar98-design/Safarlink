@@ -18,10 +18,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Truck, CheckCircle, AlertTriangle, XCircle, LogOut, Search, Building2, UserCircle2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const ALL_COMPANIES_VALUE = '__all_companies__';
-const TRACKING_REFRESH_INTERVAL_MS = 15 * 1000;
+const TRACKING_REFRESH_INTERVAL_MS = 45 * 1000; // Increased to 45s fallback since Realtime is active
 
 export default function Dashboard() {
   const { user, accountType, loading: authLoading, signOut } = useAuth();
@@ -41,7 +42,7 @@ export default function Dashboard() {
 
   const handleTripUpdated = (updatedTrip: Trip) => {
     setTrips((prev) => prev.map((trip) => (trip.id === updatedTrip.id ? updatedTrip : trip)));
-    setSelectedTrip(updatedTrip);
+    setSelectedTrip(current => current?.id === updatedTrip.id ? updatedTrip : current);
   };
 
   const handleTripDeleted = (deletedTripId: string) => {
@@ -60,9 +61,9 @@ export default function Dashboard() {
     }
   }, [user, accountType, authLoading, navigate]);
 
-  const fetchTrips = async () => {
+  const fetchTrips = async (showLoading = true) => {
     if (!user) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
 
     try {
       const data = await listTripsForUser(user.id);
@@ -72,22 +73,44 @@ export default function Dashboard() {
       const message = error instanceof Error ? error.message : 'Unable to fetch trips.';
       toast.error(message);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user) fetchTrips();
+    if (user) fetchTrips(true);
   }, [user]);
 
+  // Supabase Realtime Subscription for live updates
   useEffect(() => {
     if (!user) return;
 
+    const channel = supabase
+      .channel('dashboard-trips-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'trips',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          // Narrowly scoped refresh: when any trip owned by user changes, pull fresh data.
+          // This ensures all calculated fields and relations are handled by the API logic.
+          void fetchTrips(false);
+        }
+      )
+      .subscribe();
+
     const interval = setInterval(() => {
-      void fetchTrips();
+      void fetchTrips(false);
     }, TRACKING_REFRESH_INTERVAL_MS);
 
-    return () => clearInterval(interval);
+    return () => {
+      void supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, [user]);
 
 
