@@ -70,14 +70,18 @@ Deno.serve(async (req) => {
     // Ignore parse errors for GET or empty POST
   }
 
-  const googleApiKey   = Deno.env.get('GOOGLE_MAPS_API_KEY');
-  const supabaseUrl    = Deno.env.get('SUPABASE_URL');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim();
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
 
   if (!googleApiKey || !supabaseUrl || !serviceRoleKey) {
     console.error('[eta-updater] Missing environment variables.');
     return json({ error: 'Server misconfiguration: missing env vars.' }, 500);
   }
+
+  // Masked log for user verification
+  const maskedKey = `${googleApiKey.substring(0, 3)}...${googleApiKey.substring(googleApiKey.length - 3)}`;
+  console.log(`[eta-updater] Config: API Key length=${googleApiKey.length}, masked=${maskedKey}`);
 
   console.log(`[eta-updater] Starting scan. Triggered by: ${triggeredBy}${inputTripId ? ` (Target: ${inputTripId})` : ''}`);
 

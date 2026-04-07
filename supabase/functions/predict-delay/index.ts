@@ -38,13 +38,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
 
     if (!googleApiKey || !supabaseUrl || !serviceRoleKey) {
-      throw new Error('Missing GOOGLE_MAPS_API_KEY, SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY.');
+      console.error('[predict-delay] CONFIG ERROR: Missing GOOGLE_MAPS_API_KEY, SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY.');
+      return new Response(JSON.stringify({ error: 'Server configuration error: missing keys.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    // Masked log for user verification
+    const maskedKey = `${googleApiKey.substring(0, 3)}...${googleApiKey.substring(googleApiKey.length - 3)}`;
+    console.log(`[predict-delay] Config: API Key length=${googleApiKey.length}, masked=${maskedKey}`);
 
     const body = (await req.json()) as PredictDelayRequest;
     if (!body.tripId || !Number.isFinite(body.currentLatitude) || !Number.isFinite(body.currentLongitude)) {
@@ -173,11 +181,13 @@ Deno.serve(async (req) => {
       );
 
     } catch (gErr: any) {
-      console.timeEnd(`google-api-${body.tripId}`); // Ensure timer ends even on catch
-      const gMsg = gErr.name === 'AbortError' ? 'Google API timeout (30s)' : gErr.message;
+      console.timeEnd(`google-api-${body.tripId}`);
+      const isTimeout = gErr.name === 'AbortError';
+      const gMsg = isTimeout ? 'Google API timeout (30s)' : gErr.message;
       console.error(`[predict-delay] Google Fetch Error: ${gMsg}`);
+      
       return new Response(JSON.stringify({ error: gMsg }), {
-        status: 504, // Gateway Timeout
+        status: isTimeout ? 504 : 502, // 504 for timeout, 502 for other network errors
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
