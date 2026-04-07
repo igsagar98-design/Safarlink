@@ -147,14 +147,20 @@ Deno.serve(async (req) => {
       ? `${destLat},${destLng}`
       : encodeURIComponent(trip.destination);
 
-    console.log(`[eta-updater] Processing trip ${tripId}: origin=${origin} dest=${destination}`);
+    console.log(`[eta-updater] Processing trip ${tripId}: origin=${origin} dest=${trip.destination}`);
+
+    // Use a 5s timeout for the fetch call
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
       // ── 3. Call Google Directions API ───────────────────────────────────────
       const googleUrl = `https://maps.googleapis.com/maps/api/directions/json` +
         `?origin=${origin}&destination=${destination}&mode=driving&key=${googleApiKey}`;
 
-      const gRes = await fetch(googleUrl);
+      const gRes = await fetch(googleUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (!gRes.ok) {
         const text = await gRes.text();
         throw new Error(`Google HTTP ${gRes.status}: ${text}`);
@@ -166,7 +172,7 @@ Deno.serve(async (req) => {
       if (gData.status !== 'OK') {
         const errMsg = gData.error_message || 'No error message from Google';
         console.error(`[eta-updater] Google error for ${tripId}: ${gData.status} — ${errMsg}`);
-        results.push({ tripId, result: 'error', reason: `Google: ${gData.status}` });
+        results.push({ tripId: String(tripId), result: 'error', reason: `Google: ${gData.status} - ${errMsg}` });
         skipped++;
         continue;
       }
@@ -223,13 +229,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      results.push({ tripId, result: 'updated' });
+      results.push({ tripId: String(tripId), result: 'updated' });
       processed++;
 
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+    } catch (err: any) {
+      const message = err.name === 'AbortError' ? 'Google API timeout (5s)' : (err instanceof Error ? err.message : String(err));
       console.error(`[eta-updater] ERROR for trip ${tripId}: ${message}`);
-      results.push({ tripId, result: 'error', reason: message });
+      results.push({ tripId: String(tripId), result: 'error', reason: message });
       skipped++;
     }
   }

@@ -74,106 +74,111 @@ Deno.serve(async (req) => {
     }
 
     // --- Switch to Classic Directions API ---
-    // Endpoint: https://maps.googleapis.com/maps/api/directions/json
     const origin = `${body.currentLatitude},${body.currentLongitude}`;
     const destination = encodeURIComponent(trip.destination);
     const googleUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&mode=driving&key=${googleApiKey}`;
 
-    const directionsResponse = await fetch(googleUrl);
-    
-    if (!directionsResponse.ok) {
-      const details = await directionsResponse.text();
-      throw new Error(`Google API network error (${directionsResponse.status}): ${details}`);
-    }
+    console.log(`[predict-delay] Calling Google Directions: origin=${origin}, destination=${trip.destination}`);
 
-    const directionsData = await directionsResponse.json();
+    // Use a 5s timeout for the fetch call
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    if (directionsData.status !== 'OK') {
-      // If the API returns an error status (like REQUEST_DENIED), log it as a timeline event so the user can debug.
-      console.error(`[predict-delay] Google Directions error: ${directionsData.status}`, directionsData.error_message || '');
+    try {
+      const directionsResponse = await fetch(googleUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
       
-      await supabaseAdmin.from('trip_status_updates').insert({
-        trip_id: trip.id,
-        status: trip.status || 'on_time',
-        note: `Smart ETA Error: ${directionsData.status} - ${directionsData.error_message || 'Please check your Google API Key permissions.'}`,
-      });
-
-      throw new Error(`Google API returned status: ${directionsData.status} ${directionsData.error_message || ''}`);
-    }
-
-    // Extract travel time from the first leg of the first route
-    const durationSeconds = directionsData.routes?.[0]?.legs?.[0]?.duration?.value;
-
-    if (!durationSeconds || durationSeconds <= 0) {
-      throw new Error('Unable to determine remaining travel time from Google Directions response.');
-    }
-
-    const nowMs = Date.now();
-    const predictedArrivalMs = nowMs + durationSeconds * 1000;
-    const predictedArrivalIso = new Date(predictedArrivalMs).toISOString();
-
-    const plannedMs = new Date(trip.planned_arrival).getTime();
-    const delayMinutes = Math.max(Math.round((predictedArrivalMs - plannedMs) / 60000), 0);
-
-    const etaMinutes = Math.round(durationSeconds / 60);
-    const predictedStatus =
-      trip.status === 'delivered'
-        ? 'delivered'
-        : computePredictedStatus(trip.planned_arrival, predictedArrivalIso);
-
-    const { error: updateError } = await supabaseAdmin
-      .from('trips')
-      .update({
-        predicted_eta_at:         predictedArrivalIso,
-        predicted_eta_minutes:    etaMinutes,
-        remaining_distance_meters: directionsData.routes?.[0]?.legs?.[0]?.distance?.value ?? null,
-        eta_last_calculated_at:   new Date(nowMs).toISOString(),
-        
-        predicted_arrival: predictedArrivalIso,
-        current_eta: predictedArrivalIso,
-        delay_minutes: delayMinutes,
-        status: predictedStatus,
-        last_prediction_at: new Date(nowMs).toISOString(),
-      })
-      .eq('id', trip.id);
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    // Log the automatic change to the timeline if the risk status changes
-    if (predictedStatus !== 'delivered') {
-      const { data: latestStatusRows } = await supabaseAdmin
-        .from('trip_status_updates')
-        .select('status')
-        .eq('trip_id', trip.id)
-        .order('recorded_at', { ascending: false })
-        .limit(1);
-
-      const latestStatus = latestStatusRows?.[0]?.status;
-      if (latestStatus !== predictedStatus) {
-        await supabaseAdmin.from('trip_status_updates').insert({
-          trip_id: trip.id,
-          status: predictedStatus,
-          note: `Auto risk update from predicted ETA: ${predictedStatus}`,
+      if (!directionsResponse.ok) {
+        const details = await directionsResponse.text();
+        console.error(`[predict-delay] Google HTTP ${directionsResponse.status}: ${details}`);
+        return new Response(JSON.stringify({ error: `Google API error: ${directionsResponse.status}` }), {
+          status: 424, // Failed Dependency
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-    }
 
-    return new Response(
-      JSON.stringify({
-        tripId: trip.id,
-        predictedArrival: predictedArrivalIso,
-        delayMinutes,
-        remainingTravelTimeSeconds: durationSeconds,
-        predictedStatus,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      const directionsData = await directionsResponse.json();
+      console.log(`[predict-delay] Google Response Status: ${directionsData.status}`);
+
+      if (directionsData.status !== 'OK') {
+        const errMsg = directionsData.error_message || 'Please check your Google API Key permissions.';
+        console.error(`[predict-delay] Google API Status ${directionsData.status}: ${errMsg}`);
+        
+        await supabaseAdmin.from('trip_status_updates').insert({
+          trip_id: trip.id,
+          status: trip.status || 'on_time',
+          note: `Smart ETA Error: ${directionsData.status} - ${errMsg}`,
+        });
+
+        return new Response(JSON.stringify({ error: `Google API: ${directionsData.status} - ${errMsg}` }), {
+          status: 424,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
-    );
-  } catch (error) {
+
+      // Extract travel time from the first leg of the first route
+      const durationSeconds = directionsData.routes?.[0]?.legs?.[0]?.duration?.value;
+
+      if (!durationSeconds || durationSeconds <= 0) {
+        throw new Error('Unable to determine remaining travel time from Google Directions response.');
+      }
+
+      const nowMs = Date.now();
+      const predictedArrivalMs = nowMs + durationSeconds * 1000;
+      const predictedArrivalIso = new Date(predictedArrivalMs).toISOString();
+
+      const plannedMs = new Date(trip.planned_arrival).getTime();
+      const delayMinutes = Math.max(Math.round((predictedArrivalMs - plannedMs) / 60000), 0);
+
+      const etaMinutes = Math.round(durationSeconds / 60);
+      const predictedStatus =
+        trip.status === 'delivered'
+          ? 'delivered'
+          : computePredictedStatus(trip.planned_arrival, predictedArrivalIso);
+
+      const { error: updateError } = await supabaseAdmin
+        .from('trips')
+        .update({
+          predicted_eta_at:         predictedArrivalIso,
+          predicted_eta_minutes:    etaMinutes,
+          remaining_distance_meters: directionsData.routes?.[0]?.legs?.[0]?.distance?.value ?? null,
+          eta_last_calculated_at:   new Date(nowMs).toISOString(),
+          
+          predicted_arrival: predictedArrivalIso,
+          current_eta: predictedArrivalIso,
+          delay_minutes: delayMinutes,
+          status: predictedStatus,
+          last_prediction_at: new Date(nowMs).toISOString(),
+        })
+        .eq('id', trip.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+      
+      return new Response(
+        JSON.stringify({
+          tripId: trip.id,
+          predictedArrival: predictedArrivalIso,
+          delayMinutes,
+          remainingTravelTimeSeconds: durationSeconds,
+          predictedStatus,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+
+    } catch (gErr: any) {
+      const gMsg = gErr.name === 'AbortError' ? 'Google API timeout (5s)' : gErr.message;
+      console.error(`[predict-delay] Google Fetch Error: ${gMsg}`);
+      return new Response(JSON.stringify({ error: gMsg }), {
+        status: 504, // Gateway Timeout
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  } catch (error: any) {
     const message = error instanceof Error ? error.message : 'Unexpected error';
     return new Response(JSON.stringify({ error: message }), {
       status: 500,

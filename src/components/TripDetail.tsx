@@ -391,14 +391,26 @@ export default function TripDetail({
       icon: Clock,
       label: 'Predicted ETA',
       value: (
-        <div className="flex flex-col">
-          <span>
-            {trip.predicted_eta_at 
-              ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
-              : (trip.predicted_arrival ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm') : '—')}
-          </span>
+        <div className="flex flex-col flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">
+              {trip.predicted_eta_at 
+                ? format(new Date(trip.predicted_eta_at), 'dd MMM yyyy, HH:mm')
+                : (trip.predicted_arrival ? format(new Date(trip.predicted_arrival), 'dd MMM yyyy, HH:mm') : '—')}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-6 w-6 rounded-full" 
+              onClick={handleRefreshETA}
+              disabled={isRefreshingETA}
+              title="Recalculate smart ETA"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshingETA ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
           {trip.eta_last_calculated_at && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground mt-0.5">
               {trip.is_location_live ? 'Auto-updating' : `Stale (last updated ${timeAgo(trip.eta_last_calculated_at)})`}
             </span>
           )}
