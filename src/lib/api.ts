@@ -653,15 +653,8 @@ export async function postDriverLocationUpdate(
     if (fallbackError) throw fallbackError;
   }
 
-  // Non-blocking automatic prediction update.
-  predictTripDelay({
-    tripId,
-    currentLatitude: latitude,
-    currentLongitude: longitude,
-    trackingToken: options?.trackingToken,
-  }).catch(() => {
-    // Keep location pipeline resilient if prediction fails.
-  });
+  // ETA updates are now handled by the automated eta-updater function.
+  // driver-location-update triggers it on first ping, and CustomerTracking polls it.
 }
 
 export async function predictTripDelay(input: PredictDelayInput): Promise<void> {

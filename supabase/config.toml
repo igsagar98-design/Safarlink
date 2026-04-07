@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.driver-location-update]
 verify_jwt = false
+
+[functions.eta-updater]
+verify_jwt = false

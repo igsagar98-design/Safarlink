@@ -22,7 +22,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
-const STALE_LOCATION_MS     = 3 * 60 * 1000;  // 3 minutes
+const STALE_LOCATION_MS     = 10 * 60 * 1000; // 10 minutes
 const PREDICTION_THROTTLE_MS = 2 * 60 * 1000; // 2 minutes
 
 // Statuses that are still "active" for ETA purposes
@@ -57,21 +57,36 @@ Deno.serve(async (req) => {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
+  // Parse optional tripId from body
+  let inputTripId: string | null = null;
+  let triggeredBy = 'unknown';
+  try {
+    if (req.method === 'POST') {
+      const body = await req.json();
+      inputTripId = body.tripId || null;
+      triggeredBy = body.triggeredBy || 'manual_post';
+    }
+  } catch {
+    // Ignore parse errors for GET or empty POST
+  }
+
   const googleApiKey   = Deno.env.get('GOOGLE_MAPS_API_KEY');
   const supabaseUrl    = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!googleApiKey || !supabaseUrl || !serviceRoleKey) {
+    console.error('[eta-updater] Missing environment variables.');
     return json({ error: 'Server misconfiguration: missing env vars.' }, 500);
   }
+
+  console.log(`[eta-updater] Starting scan. Triggered by: ${triggeredBy}${inputTripId ? ` (Target: ${inputTripId})` : ''}`);
 
   const db = createClient(supabaseUrl, serviceRoleKey);
   const now = Date.now();
   const staleThreshold = new Date(now - STALE_LOCATION_MS).toISOString();
-  const throttleThreshold = new Date(now - PREDICTION_THROTTLE_MS).toISOString();
 
-  // ── 1. Find all ETA-eligible trips ──────────────────────────────────────────
-  const { data: trips, error: fetchError } = await db
+  // ── 1. Find ETA-eligible trips ──────────────────────────────────────────────
+  let query = db
     .from('trips')
     .select(
       'id, destination, planned_arrival, status, last_latitude, last_longitude, ' +
@@ -84,6 +99,12 @@ Deno.serve(async (req) => {
     .not('last_latitude', 'is', null)
     .not('last_longitude', 'is', null)
     .not('destination', 'is', null);
+
+  if (inputTripId) {
+    query = query.eq('id', inputTripId);
+  }
+
+  const { data: trips, error: fetchError } = await query;
 
   if (fetchError) {
     console.error('[eta-updater] Failed to fetch eligible trips:', fetchError.message);
