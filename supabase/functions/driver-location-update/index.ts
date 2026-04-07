@@ -134,6 +134,7 @@ Deno.serve(async (req) => {
           remaining_distance_meters: remainingDist,
           remaining_duration_seconds: liveRoute.durationSeconds,
           predicted_eta_at: predictedEtaAt,
+          current_eta: predictedEtaAt, // Sync to legacy field for APK compatibility
           route_progress_percent: progress.toFixed(2),
           last_eta_calculated_at: nowIso
         })
