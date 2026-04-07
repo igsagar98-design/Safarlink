@@ -7,7 +7,14 @@ import {
   type TripEvent,
   type Trip,
 } from '@/lib/api';
-import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
+import { 
+  getStatusLabel, 
+  getStatusClass, 
+  timeAgo, 
+  calculateTripStatus,
+  calculateDelayMinutes,
+  formatDelay 
+} from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation, ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
@@ -212,6 +219,7 @@ export default function CustomerTracking() {
   }
 
   const status = calculateTripStatus(trip);
+  const delayMinutes = calculateDelayMinutes(trip.planned_arrival, trip.predicted_eta_at);
   const trackingState = getTrackingState(trip, events);
   const trackingMode = getTrackingMode(trip);
   const hasDriverCoordinates = hasCoordinatePair(trip.last_driver_latitude, trip.last_driver_longitude);
@@ -247,12 +255,7 @@ export default function CustomerTracking() {
     {
       icon: AlertTriangle,
       label: 'Delay',
-      value:
-        typeof trip.predicted_eta_minutes === 'number' // Or delay limit
-          ? (trip.delay_minutes && trip.delay_minutes > 0 ? `${trip.delay_minutes} min delayed` : 'No delay predicted')
-          : (typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
-              ? `${trip.delay_minutes} min delayed`
-              : 'No delay predicted'),
+      value: formatDelay(delayMinutes),
     },
     {
       icon: MapPin,
@@ -289,10 +292,10 @@ export default function CustomerTracking() {
           </div>
         </div>
 
-        {typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0 && (
+        {delayMinutes > 0 && (
           <div className="card-elevated p-3 border-warning/40 bg-warning/10">
             <p className="text-xs font-medium text-warning">
-              Delay warning: predicted arrival is {trip.delay_minutes} minutes later than planned.
+              Delay warning: predicted arrival is {formatDelay(delayMinutes)} later than planned.
             </p>
           </div>
         )}

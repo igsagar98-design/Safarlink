@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Trip } from '@/components/TripCard';
 import { deleteTrip, listTripEvents, listTripStops, replaceTripStops, type TripEvent, type TripStopType, updateTrip, updateTripCreatedEventMetadata } from '@/lib/api';
-import { getStatusLabel, getStatusClass, calculateTripStatus, timeAgo } from '@/lib/risk-logic';
+import { 
+  getStatusLabel, 
+  getStatusClass, 
+  timeAgo, 
+  calculateTripStatus,
+  formatDelay,
+  calculateDelayMinutes
+} from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Copy, ExternalLink, X, MapPin, Phone, User, Building, Package, Clock, Navigation, AlertTriangle, Route, Trash2, Hash } from 'lucide-react';
@@ -404,10 +411,14 @@ export default function TripDetail({
     {
       icon: AlertTriangle,
       label: 'Delay',
-      value:
-        typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0
-          ? `${trip.delay_minutes} min delayed`
-          : 'No delay predicted',
+      value: (() => {
+        const delayMinutes = calculateDelayMinutes(trip.planned_arrival, trip.predicted_eta_at);
+        return (
+          <span className={`text-xs font-semibold ${delayMinutes > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+            {formatDelay(delayMinutes)}
+          </span>
+        );
+      })(),
     },
     {
       icon: MapPin,

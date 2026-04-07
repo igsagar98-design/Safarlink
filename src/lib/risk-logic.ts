@@ -140,6 +140,40 @@ export function getStatusClass(status: TripStatus): string {
   }
 }
 
+/** 
+ * Computes delay based on Planned Arrival vs Predicted ETA 
+ */
+export function calculateDelayMinutes(planned: string, predicted: string | null | undefined): number {
+  if (!planned || !predicted) return 0;
+  const pDate = new Date(planned);
+  const eDate = new Date(predicted);
+  if (isNaN(pDate.getTime()) || isNaN(eDate.getTime())) return 0;
+  
+  const diffMs = eDate.getTime() - pDate.getTime();
+  return Math.max(0, Math.floor(diffMs / 60000));
+}
+
+/** 
+ * User-friendly delay formatting (e.g., "9h 33m delayed") 
+ */
+export function formatDelay(minutes: number): string {
+  if (minutes <= 0) return 'No delay predicted';
+  if (minutes < 60) return `${minutes} min delayed`;
+  
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  
+  if (hrs >= 24) {
+    const days = Math.floor(hrs / 24);
+    const remainingHrs = hrs % 24;
+    if (remainingHrs === 0) return `${days}d delayed`;
+    return `${days}d ${remainingHrs}h delayed`;
+  }
+  
+  if (mins === 0) return `${hrs}h delayed`;
+  return `${hrs}h ${mins}m delayed`;
+}
+
 /** Format relative time like "5 min ago" */
 export function timeAgo(dateStr: string | null): string {
   if (!dateStr) return 'No updates';
