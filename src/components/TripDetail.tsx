@@ -7,7 +7,8 @@ import {
   timeAgo, 
   calculateTripStatus,
   formatDelay,
-  calculateDelayMinutes
+  calculateDelayMinutes,
+  formatDelayDuration
 } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -659,14 +660,17 @@ export default function TripDetail({
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save Changes'}
           </Button>
-        </div>
-      )}
-
-      {typeof trip.delay_minutes === 'number' && trip.delay_minutes > 0 && (
-        <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
-          <p className="text-xs font-medium text-warning">
-            Delay warning: predicted arrival is {trip.delay_minutes} minutes after planned arrival.
-          </p>
+          {(() => {
+            const delayMinutes = calculateDelayMinutes(trip.planned_arrival, trip.predicted_eta_at);
+            if (delayMinutes <= 0) return null;
+            return (
+              <div className="card-elevated p-3 border-warning/40 bg-warning/10">
+                <p className="text-xs font-medium text-warning text-center">
+                  Predicted arrival is {formatDelayDuration(delayMinutes)} later than planned arrival.
+                </p>
+              </div>
+            );
+          })()}
         </div>
       )}
 
