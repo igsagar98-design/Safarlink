@@ -136,7 +136,10 @@ Deno.serve(async (req) => {
           predicted_eta_at: predictedEtaAt,
           current_eta: predictedEtaAt, // Sync to legacy field for APK compatibility
           route_progress_percent: progress.toFixed(2),
-          last_eta_calculated_at: nowIso
+          last_eta_calculated_at: nowIso,
+          // Auto-initialize baseline if missing
+          ...(trip.route_distance_meters === null ? { route_distance_meters: baselineDist } : {}),
+          ...(trip.route_duration_seconds === null ? { route_duration_seconds: liveRoute.durationSeconds } : {})
         })
         .eq('id', tripId);
 
