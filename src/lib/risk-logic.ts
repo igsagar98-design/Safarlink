@@ -174,6 +174,27 @@ export function formatDelay(minutes: number): string {
   return `${hrs}h ${mins}m delayed`;
 }
 
+/** 
+ * Returns just the duration string (e.g., "9h 33m") for use in sentences.
+ */
+export function formatDelayDuration(minutes: number): string {
+  if (minutes <= 0) return '0 min';
+  if (minutes < 60) return `${minutes} min`;
+  
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  
+  if (hrs >= 24) {
+    const days = Math.floor(hrs / 24);
+    const remainingHrs = hrs % 24;
+    if (remainingHrs === 0) return `${days}d`;
+    return `${days}d ${remainingHrs}h`;
+  }
+  
+  if (mins === 0) return `${hrs}h`;
+  return `${hrs}h ${mins}m`;
+}
+
 /** Format relative time like "5 min ago" */
 export function timeAgo(dateStr: string | null): string {
   if (!dateStr) return 'No updates';

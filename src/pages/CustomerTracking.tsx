@@ -13,7 +13,8 @@ import {
   timeAgo, 
   calculateTripStatus,
   calculateDelayMinutes,
-  formatDelay 
+  formatDelay, 
+  formatDelayDuration
 } from '@/lib/risk-logic';
 import { format } from 'date-fns';
 import { Truck, MapPin, Package, Clock, Building, AlertTriangle, Navigation, ExternalLink } from 'lucide-react';
@@ -294,8 +295,8 @@ export default function CustomerTracking() {
 
         {delayMinutes > 0 && (
           <div className="card-elevated p-3 border-warning/40 bg-warning/10">
-            <p className="text-xs font-medium text-warning">
-              Delay warning: predicted arrival is {formatDelay(delayMinutes)} later than planned.
+            <p className="text-xs font-medium text-warning text-center">
+              Predicted arrival is {formatDelayDuration(delayMinutes)} later than planned arrival.
             </p>
           </div>
         )}
