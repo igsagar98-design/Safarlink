@@ -128,6 +128,23 @@ Deno.serve(async (req) => {
 
       const predictedEtaAt = new Date(now.getTime() + liveRoute.durationSeconds * 1000).toISOString();
 
+      // DYNAMIC STATUS CALCULATION
+      const plannedArrival = new Date(trip.planned_arrival);
+      const diffMs = new Date(predictedEtaAt).getTime() - plannedArrival.getTime();
+      let newStatus = trip.status;
+      
+      // Only auto-update status if it's currently on_time, at_risk, late, or active/validated/on_route
+      const autoResettableStatuses = ['on_time', 'at_risk', 'late', 'active', 'validated', 'reached_pickup', 'on_route'];
+      if (autoResettableStatuses.includes(trip.status)) {
+        if (diffMs > 2 * 60 * 60 * 1000) { // > 2 hours delay
+          newStatus = 'late';
+        } else if (diffMs > 30 * 60 * 1000) { // 30 mins to 2 hours delay
+          newStatus = 'at_risk';
+        } else {
+          newStatus = 'on_time';
+        }
+      }
+
       const { error: metricsError } = await supabase
         .from('trips')
         .update({
@@ -136,6 +153,7 @@ Deno.serve(async (req) => {
           predicted_eta_at: predictedEtaAt,
           current_eta: predictedEtaAt, // Sync to legacy field for APK compatibility
           route_progress_percent: progress.toFixed(2),
+          status: newStatus, // Update status dynamically
           last_eta_calculated_at: nowIso,
           // Auto-initialize baseline if missing
           ...(trip.route_distance_meters === null ? { route_distance_meters: baselineDist } : {}),
