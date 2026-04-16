@@ -16,6 +16,7 @@ import TrackingPage from "./pages/TrackingPage";
 import NotFound from "./pages/NotFound";
 
 import DriverLinkRouter from "./pages/DriverLinkRouter";
+import SupportWidget from "./components/SupportWidget";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/tracking" element={<TrackingPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <SupportWidget />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
