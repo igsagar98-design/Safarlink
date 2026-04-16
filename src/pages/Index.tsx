@@ -37,6 +37,7 @@ export default function Index() {
           <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-500">
             <a href="#features" className="hover:text-blue-600 transition-colors">Features</a>
             <a href="#driver-app" className="hover:text-blue-600 transition-colors">Driver App</a>
+            <a href="#pricing" className="hover:text-blue-600 transition-colors">Pricing</a>
             <a href="#how-it-works" className="hover:text-blue-600 transition-colors">How it works</a>
             <a href="#for-who" className="hover:text-blue-600 transition-colors">For who</a>
           </nav>
@@ -284,6 +285,62 @@ export default function Index() {
                 <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+      {/* ── PRICING ── */}
+      <section id="pricing" className="py-24 bg-white border-t border-slate-100">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-14">
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-3">Simple Pricing</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900">Choose the plan that fits you</h2>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-4 max-w-6xl mx-auto items-stretch">
+            <div className="p-6 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col">
+              <h3 className="font-bold text-lg mb-2">Pay As You Go</h3>
+              <div className="text-3xl font-bold mb-4 font-display">₹7<span className="text-sm font-normal text-slate-500"> / trip</span></div>
+              <ul className="text-sm space-y-3 mb-6 text-slate-600 flex-1">
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-slate-400"/> Infinite scalability</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-slate-400"/> No monthly commitments</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-slate-400"/> Pay at the end of month</li>
+              </ul>
+              <Button variant="outline" asChild className="w-full bg-white text-slate-900"><Link to="/signup">Start Free</Link></Button>
+            </div>
+
+            <div className="p-6 rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col">
+              <h3 className="font-bold text-lg mb-2">Starter</h3>
+              <div className="text-3xl font-bold mb-4 font-display">₹499<span className="text-sm font-normal text-slate-500"> / mo</span></div>
+              <ul className="text-sm space-y-3 mb-6 text-slate-600 flex-1">
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500"/> 150 trips included</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-slate-400"/> ₹7 per extra trip</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-slate-400"/> Basic support</li>
+              </ul>
+              <Button variant="default" asChild className="w-full bg-slate-900 hover:bg-slate-800"><Link to="/signup">Get Starter</Link></Button>
+            </div>
+
+            <div className="p-6 rounded-2xl border-2 border-blue-600 bg-blue-50/50 shadow-md relative flex flex-col transform md:-translate-y-4">
+              <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg rounded-tr-xl uppercase tracking-wider">Most Popular</div>
+              <h3 className="font-bold text-lg mb-2 text-blue-900">Growth</h3>
+              <div className="text-3xl font-bold mb-4 font-display text-blue-900">₹999<span className="text-sm font-normal text-blue-600/70"> / mo</span></div>
+              <ul className="text-sm space-y-3 mb-6 text-blue-800 flex-1">
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600"/> 300 trips included</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600/70"/> ₹7 per extra trip</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600/70"/> Priority email support</li>
+              </ul>
+              <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white"><Link to="/signup">Get Growth</Link></Button>
+            </div>
+
+            <div className="p-6 rounded-2xl border border-slate-800 bg-slate-900 text-white flex flex-col">
+              <h3 className="font-bold text-lg mb-2 text-white">Scale</h3>
+              <div className="text-3xl font-bold mb-4 font-display text-white">₹2999<span className="text-sm font-normal text-slate-400"> / mo</span></div>
+              <ul className="text-sm space-y-3 mb-6 text-slate-300 flex-1">
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400"/> Unlimited trips included</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400"/> Dedicated Account Manager</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400"/> API Access</li>
+              </ul>
+              <Button variant="outline" asChild className="w-full border-slate-700 hover:bg-slate-800 hover:text-white text-white"><Link to="/signup">Go Unlimited</Link></Button>
+            </div>
           </div>
         </div>
       </section>

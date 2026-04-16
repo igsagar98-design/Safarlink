@@ -14,6 +14,7 @@ import DriverTracking from "./pages/DriverTracking";
 import CustomerTracking from "./pages/CustomerTracking";
 import TrackingPage from "./pages/TrackingPage";
 import NotFound from "./pages/NotFound";
+import BillingPage from "./pages/Billing";
 
 import DriverLinkRouter from "./pages/DriverLinkRouter";
 import SupportWidget from "./components/SupportWidget";
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/company-dashboard" element={<CompanyDashboard />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/company-profile" element={<CompanyProfile />} />
+          <Route path="/billing" element={<BillingPage />} />
           <Route path="/driver/:token" element={<DriverTracking />} />
           <Route path="/d/:token" element={<DriverLinkRouter />} />
           <Route path="/track/:token" element={<CustomerTracking />} />

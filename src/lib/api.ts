@@ -42,6 +42,25 @@ export type Trip = Tables<'trips'> & {
   last_eta_calculated_at?: string | null;
 };
 
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan_type: 'payg' | 'starter' | 'growth' | 'scale' | 'free_trial';
+  trip_limit: number;
+  price: number;
+  start_date: string;
+  end_date: string | null;
+  status: 'active' | 'expired';
+}
+
+export interface UsageTracking {
+  id: string;
+  user_id: string;
+  month: string;
+  trips_used: number;
+  extra_trips: number;
+}
+
 export interface CreateTripInput {
   user_id: string;
   vehicle_number: string;
@@ -160,6 +179,53 @@ export interface PredictDelayInput {
   longitude: number;
   trackingToken?: string;
   force?: boolean;
+}
+
+export async function getSubscription(): Promise<Subscription> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+
+  const { data, error } = await supabase.rpc('ensure_user_subscription', { p_user_id: user.id });
+  
+  if (error) {
+    console.error('Subscription fallback error:', error);
+    throw error;
+  }
+  
+  return data as Subscription;
+}
+
+export async function getUsageTracking(): Promise<UsageTracking | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const { data, error } = await supabase
+    .from('usage_tracking')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('month', currentMonth)
+    .maybeSingle();
+
+  if (error) throwSupabaseError(error);
+  return data as UsageTracking;
+}
+
+export async function createRazorpayOrder(amountInINR: number, planType: string): Promise<{ orderId: string, amount: number, currency: string, key: string }> {
+  const { data, error } = await supabase.functions.invoke('razorpay-create-order', {
+    body: { amountInPaise: amountInINR * 100, metadata: { plan_type: planType } },
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function verifyRazorpayPayment(payload: any): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('razorpay-verify', {
+    body: payload,
+  });
+
+  if (error) throw error;
 }
 
 function throwSupabaseError(error: { message?: string } | null): never {
@@ -417,6 +483,16 @@ export async function listTransporterCompaniesForShipper(
 }
 
 export async function createTrip(input: CreateTripInput): Promise<Trip> {
+  // Billing check
+  try {
+    const sub = await getSubscription();
+    if (sub.status === 'expired') {
+      throw new Error('Your subscription has expired. Please upgrade or switch to Pay-As-You-Go in the Payments tab.');
+    }
+  } catch (e) {
+    console.error('Billing check failed, proceeding anyway:', e);
+  }
+
   const { data, error } = await supabase.from('trips').insert(input).select('*').single();
   if (error) {
     console.error('Create trip error:', error);
@@ -427,6 +503,16 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
 
 export async function createTrips(inputs: CreateTripInput[]): Promise<Trip[]> {
   if (inputs.length === 0) return [];
+
+  // Billing check
+  try {
+    const sub = await getSubscription();
+    if (sub.status === 'expired') {
+      throw new Error('Your subscription has expired. Please upgrade or switch to Pay-As-You-Go in the Payments tab.');
+    }
+  } catch (e) {
+    console.error('Billing check failed, proceeding anyway:', e);
+  }
 
   const { data, error } = await supabase.from('trips').insert(inputs).select('*');
   if (error) {
