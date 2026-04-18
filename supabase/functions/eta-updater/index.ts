@@ -94,7 +94,8 @@ Deno.serve(async (req) => {
     .from('trips')
     .select(
       'id, destination, planned_arrival, status, last_latitude, last_longitude, ' +
-      'drop_latitude, drop_longitude, eta_last_calculated_at, last_location_received_at'
+      'drop_latitude, drop_longitude, eta_last_calculated_at, last_location_received_at, ' +
+      'route_distance_meters'
     )
     .eq('is_active', true)
     .in('status', ACTIVE_STATUSES)
@@ -204,6 +205,13 @@ Deno.serve(async (req) => {
         `arrival=${predictedArrivalIso}, status=${newStatus}, delay=${delayMinutes}min`
       );
 
+      const baselineDist = trip.route_distance_meters || distanceMeters;
+      let progress = 0;
+      if (baselineDist && baselineDist > 0 && distanceMeters != null) {
+        progress = ((baselineDist - distanceMeters) / baselineDist) * 100;
+        progress = Math.max(0, Math.min(100, progress));
+      }
+
       // ── 5. Write to DB ───────────────────────────────────────────────────────
       const { error: updateError } = await db
         .from('trips')
@@ -212,6 +220,8 @@ Deno.serve(async (req) => {
           predicted_eta_minutes:    etaMinutes,
           remaining_distance_meters: distanceMeters ?? null,
           eta_last_calculated_at:   new Date(now).toISOString(),
+          route_progress_percent:   progress.toFixed(2),
+          ...(trip.route_distance_meters === null && baselineDist ? { route_distance_meters: baselineDist } : {}),
           
           // Maintaining backward compatibility for old fields if still used
           predicted_arrival:        predictedArrivalIso,
