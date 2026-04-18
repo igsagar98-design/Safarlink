@@ -21,11 +21,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tripId, latitude, longitude, currentLatitude, currentLongitude, trackingToken } = await req.json();
+    const payload = await req.json();
+    const tripId = payload.tripId || payload.trip_id || payload.id;
+    const trackingToken = payload.trackingToken || payload.tracking_token;
     
-    // APK uses currentLatitude/currentLongitude, Backend uses latitude/longitude. Handle both.
-    const lat = latitude ?? currentLatitude;
-    const lng = longitude ?? currentLongitude;
+    // Aggressively parse coordinates no matter what the APK developer named them
+    const receivedLat = payload.latitude ?? payload.currentLatitude ?? payload.lat ?? payload.current_latitude ?? payload.last_latitude;
+    const receivedLng = payload.longitude ?? payload.currentLongitude ?? payload.lng ?? payload.current_longitude ?? payload.last_longitude;
+    
+    const lat = Number(receivedLat);
+    const lng = Number(receivedLng);
+
     const googleApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim();
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
@@ -35,7 +41,8 @@ Deno.serve(async (req) => {
     }
 
     if (!tripId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return new Response(JSON.stringify({ error: 'Missing required tracking data.' }), { status: 400 });
+      console.warn(`[driver-location-update] Invalid payload dropped:`, payload);
+      return new Response(JSON.stringify({ error: 'Missing required tracking data. Ensure you pass tripId, lat, and lng accurately.' }), { status: 400 });
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
