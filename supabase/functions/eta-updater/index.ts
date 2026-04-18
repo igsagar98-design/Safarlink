@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { computeRiskStatus } from '../_shared/risk-logic.ts';
+import { computeStraightLineProgress } from '../_shared/google-routes.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ETA Updater — Automatic Batch ETA Engine
@@ -206,10 +208,21 @@ Deno.serve(async (req) => {
       );
 
       const baselineDist = trip.route_distance_meters || distanceMeters;
+      
+      // Calculate progress using Bird's-Eye Straight Line (Matching Driver APK)
       let progress = 0;
-      if (baselineDist && baselineDist > 0 && distanceMeters != null) {
-        progress = ((baselineDist - distanceMeters) / baselineDist) * 100;
-        progress = Math.max(0, Math.min(100, progress));
+      if (trip.pickup_latitude && trip.pickup_longitude && destLat && destLng) {
+        progress = computeStraightLineProgress(
+          trip.pickup_latitude, trip.pickup_longitude,
+          trip.last_latitude, trip.last_longitude,
+          destLat, destLng
+        );
+      } else {
+        // Fallback to driving distance math if coordinates are completely missing
+        if (baselineDist && baselineDist > 0 && distanceMeters != null) {
+          progress = ((baselineDist - distanceMeters) / baselineDist) * 100;
+          progress = Math.max(0, Math.min(100, progress));
+        }
       }
 
       // ── 5. Write to DB ───────────────────────────────────────────────────────

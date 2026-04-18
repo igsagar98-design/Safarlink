@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeRoute } from '../_shared/google-routes.ts';
+import { computeRoute, geocodeAddress, computeStraightLineProgress } from '../_shared/google-routes.ts';
+import { computeRiskStatus } from '../_shared/risk-logic.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -129,9 +130,22 @@ Deno.serve(async (req) => {
       const baselineDist = trip.route_distance_meters || liveRoute.distanceMeters;
       const remainingDist = liveRoute.distanceMeters;
       
-      // Progress Formula: ((Total - Remaining) / Total) * 100
-      let progress = ((baselineDist - remainingDist) / baselineDist) * 100;
-      progress = Math.max(0, Math.min(100, progress)); // Clamp between 0-100
+      let progress = 0;
+      
+      // Progress Formula: Straight Line / Birds Eye to perfectly match typical Driver APKs
+      if (trip.pickup_latitude && trip.pickup_longitude && trip.drop_latitude && trip.drop_longitude) {
+        progress = computeStraightLineProgress(
+          trip.pickup_latitude, trip.pickup_longitude,
+          lat, lng,
+          trip.drop_latitude, trip.drop_longitude
+        );
+      } else {
+        // Fallback to Driving Distance progress if explicit geo-coordinates are missing
+        if (baselineDist && baselineDist > 0) {
+          progress = ((baselineDist - remainingDist) / baselineDist) * 100;
+          progress = Math.max(0, Math.min(100, progress)); // Clamp between 0-100
+        }
+      }
 
       const predictedEtaAt = new Date(now.getTime() + liveRoute.durationSeconds * 1000).toISOString();
 

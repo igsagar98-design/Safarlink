@@ -57,6 +57,46 @@ export async function computeRoute(
 }
 
 /**
+ * Calculates straight line geographic distance between two sets of coordinates using Haversine formula.
+ * Returns distance in meters.
+ */
+export function haversineDistance(
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number {
+  const R = 6371e3; // Earth radius in meters
+  const toRad = (val: number) => val * Math.PI / 180;
+  
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Calculates Route Progress percentage using simple birds-eye math, 
+ * simulating generic Driver APK local mathematical evaluation.
+ */
+export function computeStraightLineProgress(
+  originLat: number, originLng: number,
+  currentLat: number, currentLng: number,
+  destLat: number, destLng: number
+): number {
+  const totalDist = haversineDistance(originLat, originLng, destLat, destLng);
+  const remainingDist = haversineDistance(currentLat, currentLng, destLat, destLng);
+  
+  if (totalDist === 0) return 100;
+  
+  let progress = ((totalDist - remainingDist) / totalDist) * 100;
+  return Math.max(0, Math.min(100, progress));
+}
+
+/**
  * Geocodes an address into latitude/longitude coordinates.
  * Used for setting up the initial baseline for a trip.
  */
