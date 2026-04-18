@@ -20,64 +20,39 @@ export async function computeRoute(
   destination: { lat: number; lng: number } | string,
   apiKey: string
 ): Promise<RouteMetrics> {
-  const url = 'https://routes.googleapis.com/directions/v2:computeRoutes';
-  
-  const destObj = typeof destination === 'string'
-    ? { address: destination }
-    : {
-        location: {
-          latLng: {
-            latitude: destination.lat,
-            longitude: destination.lng,
-          },
-        },
-      };
+  const originStr = `${origin.lat},${origin.lng}`;
+  const destinationStr = typeof destination === 'string' 
+    ? encodeURIComponent(destination) 
+    : `${destination.lat},${destination.lng}`;
 
-  const body = {
-    origin: {
-      location: {
-        latLng: {
-          latitude: origin.lat,
-          longitude: origin.lng,
-        },
-      },
-    },
-    destination: destObj,
-    travelMode: 'DRIVE',
-    routingPreference: 'TRAFFIC_AWARE',
-    computeAlternativeRoutes: false,
-    units: 'METRIC',
-  };
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=driving&key=${apiKey}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline',
-    },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(url);
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Routes API ${response.status}: ${errorText}`);
+    throw new Error(`Directions API ${response.status}: ${errorText}`);
   }
 
   const data = await response.json();
-  const route = data.routes?.[0];
+  if (data.status !== 'OK') {
+    throw new Error(`Google Directions API error: ${data.status} ${data.error_message || ''}`);
+  }
 
+  const route = data.routes?.[0];
   if (!route) {
     throw new Error('No valid route returned from Google.');
   }
 
-  // Duration comes as "1200s" string; parse to number
-  const durationSeconds = parseInt(route.duration.replace('s', ''), 10);
+  const leg = route.legs?.[0];
+  if (!leg) {
+    throw new Error('No leg data found in the route.');
+  }
 
   return {
-    distanceMeters: route.distanceMeters,
-    durationSeconds: durationSeconds,
-    polyline: route.polyline.encodedPolyline,
+    distanceMeters: leg.distance.value,
+    durationSeconds: leg.duration.value,
+    polyline: route.overview_polyline.points,
   };
 }
 
