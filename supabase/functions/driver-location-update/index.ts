@@ -119,10 +119,40 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, warning: 'Baseline missing' }), { headers: CORS_HEADERS });
     }
 
+    let destLat = trip.drop_latitude;
+    let destLng = trip.drop_longitude;
+
+    if (!destLat || !destLng) {
+      try {
+        const q = await geocodeAddress(trip.destination, googleApiKey);
+        destLat = q.lat;
+        destLng = q.lng;
+        // background save
+        supabase.from('trips').update({ drop_latitude: destLat, drop_longitude: destLng }).eq('id', tripId).then();
+      } catch (err) {
+        console.warn(`[driver-location-update] Geocode dst failed`);
+      }
+    }
+
+    let pickupLat = trip.pickup_latitude;
+    let pickupLng = trip.pickup_longitude;
+
+    if (!pickupLat || !pickupLng) {
+      try {
+        const q = await geocodeAddress(trip.origin, googleApiKey);
+        pickupLat = q.lat;
+        pickupLng = q.lng;
+        // background save
+        supabase.from('trips').update({ pickup_latitude: pickupLat, pickup_longitude: pickupLng }).eq('id', tripId).then();
+      } catch (err) {
+        console.warn(`[driver-location-update] Geocode org failed`);
+      }
+    }
+
     try {
       const liveRoute = await computeRoute(
         { lat: lat, lng: lng },
-        { lat: trip.drop_latitude, lng: trip.drop_longitude },
+        { lat: destLat, lng: destLng },
         googleApiKey
       );
 
@@ -133,11 +163,11 @@ Deno.serve(async (req) => {
       let progress = 0;
       
       // Progress Formula: Straight Line / Birds Eye to perfectly match typical Driver APKs
-      if (trip.pickup_latitude && trip.pickup_longitude && trip.drop_latitude && trip.drop_longitude) {
+      if (pickupLat && pickupLng && destLat && destLng) {
         progress = computeStraightLineProgress(
-          trip.pickup_latitude, trip.pickup_longitude,
+          pickupLat, pickupLng,
           lat, lng,
-          trip.drop_latitude, trip.drop_longitude
+          destLat, destLng
         );
       } else {
         // Fallback to Driving Distance progress if explicit geo-coordinates are missing

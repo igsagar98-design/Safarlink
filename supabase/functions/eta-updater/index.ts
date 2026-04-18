@@ -249,9 +249,9 @@ Deno.serve(async (req) => {
       
       // Calculate progress using Bird's-Eye Straight Line (Matching Driver APK)
       let progress = 0;
-      if (trip.pickup_latitude && trip.pickup_longitude && destLat && destLng) {
+      if (pickupLat && pickupLng && destLat && destLng) {
         progress = computeStraightLineProgress(
-          trip.pickup_latitude, trip.pickup_longitude,
+          pickupLat, pickupLng,
           trip.last_latitude, trip.last_longitude,
           destLat, destLng
         );
