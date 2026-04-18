@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeRiskStatus } from '../_shared/risk-logic.ts';
-import { computeStraightLineProgress } from '../_shared/google-routes.ts';
+import { computeStraightLineProgress, geocodeAddress } from '../_shared/google-routes.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ETA Updater — Automatic Batch ETA Engine
@@ -95,8 +95,8 @@ Deno.serve(async (req) => {
   let query = db
     .from('trips')
     .select(
-      'id, destination, planned_arrival, status, last_latitude, last_longitude, ' +
-      'drop_latitude, drop_longitude, eta_last_calculated_at, last_location_received_at, ' +
+      'id, origin, destination, planned_arrival, status, last_latitude, last_longitude, ' +
+      'pickup_latitude, pickup_longitude, drop_latitude, drop_longitude, eta_last_calculated_at, last_location_received_at, ' +
       'route_distance_meters'
     )
     .eq('is_active', true)
@@ -146,8 +146,46 @@ Deno.serve(async (req) => {
     }
 
     // Prefer drop coordinates if available for accuracy; fall back to text destination
-    const destLat = trip.drop_latitude;
-    const destLng = trip.drop_longitude;
+    let destLat = trip.drop_latitude;
+    let destLng = trip.drop_longitude;
+
+    if (!destLat || !destLng) {
+      try {
+        const q = await geocodeAddress(trip.destination, googleApiKey);
+        destLat = q.lat;
+        destLng = q.lng;
+        
+        // Cache the result to save API calls in future loops
+        const { error: updErr } = await db
+          .from('trips')
+          .update({ drop_latitude: destLat, drop_longitude: destLng })
+          .eq('id', tripId);
+        if (updErr) console.warn(updErr);
+      } catch (err) {
+        console.warn(`[eta-updater] Geocoding destination failed for trip ${tripId}`);
+      }
+    }
+
+    // Prefer origin coordinates if available for accuracy; geocode on the fly if missing
+    let pickupLat = trip.pickup_latitude;
+    let pickupLng = trip.pickup_longitude;
+    
+    if (!pickupLat || !pickupLng) {
+      try {
+        const q = await geocodeAddress(trip.origin, googleApiKey);
+        pickupLat = q.lat;
+        pickupLng = q.lng;
+        
+        // Cache the result to save API calls in future loops
+        const { error: updErr } = await db
+          .from('trips')
+          .update({ pickup_latitude: pickupLat, pickup_longitude: pickupLng })
+          .eq('id', tripId);
+        if (updErr) console.warn(updErr);
+      } catch (err) {
+        console.warn(`[eta-updater] Geocoding origin failed for trip ${tripId}`);
+      }
+    }
 
     const origin = `${trip.last_latitude},${trip.last_longitude}`;
     const destination = (destLat != null && destLng != null)
