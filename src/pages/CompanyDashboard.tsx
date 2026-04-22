@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Truck, CheckCircle, AlertTriangle, XCircle, LogOut, Search, Building2, UserCircle2, CreditCard } from 'lucide-react';
+import { Truck, CheckCircle, AlertTriangle, XCircle, LogOut, Search, Building2, UserCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { getMyProfile } from '@/lib/api';
 import { toast } from 'sonner';
@@ -206,10 +206,7 @@ export default function CompanyDashboard() {
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => fetchTrips(true)}>Refresh</Button>
-            <Button variant="ghost" onClick={() => navigate('/billing')} className="text-sm font-medium text-slate-600 hover:text-slate-900 border-x border-slate-200 rounded-none px-4 mx-1">
-              <CreditCard className="w-4 h-4 mr-2" />
-              Billing
-            </Button>
+
             <Button variant="ghost" size="icon" onClick={() => navigate('/company-profile')}>
               <UserCircle2 className="w-4 h-4" />
             </Button>

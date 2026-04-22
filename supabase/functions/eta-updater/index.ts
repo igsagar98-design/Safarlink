@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeRiskStatus } from '../_shared/risk-logic.ts';
-import { computeStraightLineProgress, geocodeAddress } from '../_shared/google-routes.ts';
+
+import { computeRoute, geocodeAddress, computeStraightLineProgress, haversineDistance } from '../_shared/google-routes.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ETA Updater — Automatic Batch ETA Engine
@@ -245,7 +245,13 @@ Deno.serve(async (req) => {
         `arrival=${predictedArrivalIso}, status=${newStatus}, delay=${delayMinutes}min`
       );
 
-      const baselineDist = trip.route_distance_meters || distanceMeters;
+      // Calculation of Route Progress
+      // FIX: Ensure baseline is always Pickup -> Destination, never Current -> Destination
+      let baselineDist = trip.route_distance_meters;
+      
+      if (!baselineDist && pickupLat && pickupLng && destLat && destLng) {
+        baselineDist = haversineDistance(pickupLat, pickupLng, destLat, destLng);
+      }
       
       // Calculate progress using Bird's-Eye Straight Line (Matching Driver APK)
       let progress = 0;
@@ -255,11 +261,13 @@ Deno.serve(async (req) => {
           trip.last_latitude, trip.last_longitude,
           destLat, destLng
         );
+        console.log(`[eta-updater] Progress Calc (Birds-Eye): ${progress.toFixed(2)}% | Origin: ${pickupLat},${pickupLng} | Current: ${trip.last_latitude},${trip.last_longitude} | Dest: ${destLat},${destLng}`);
       } else {
         // Fallback to driving distance math if coordinates are completely missing
         if (baselineDist && baselineDist > 0 && distanceMeters != null) {
           progress = ((baselineDist - distanceMeters) / baselineDist) * 100;
           progress = Math.max(0, Math.min(100, progress));
+          console.log(`[eta-updater] Progress Calc (Driving): ${progress.toFixed(2)}% | Baseline: ${baselineDist} | Remaining: ${distanceMeters}`);
         }
       }
 

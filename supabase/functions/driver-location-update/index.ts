@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeRoute, geocodeAddress, computeStraightLineProgress } from '../_shared/google-routes.ts';
-import { computeRiskStatus } from '../_shared/risk-logic.ts';
+import { computeRoute, geocodeAddress, computeStraightLineProgress, haversineDistance } from '../_shared/google-routes.ts';
+
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -30,6 +30,12 @@ Deno.serve(async (req) => {
     const receivedLat = payload.latitude ?? payload.currentLatitude ?? payload.lat ?? payload.current_latitude ?? payload.last_latitude;
     const receivedLng = payload.longitude ?? payload.currentLongitude ?? payload.lng ?? payload.current_longitude ?? payload.last_longitude;
     
+    // Support manual coordinate fixes via payload
+    const manualPickupLat = payload.pickupLat || payload.pickup_latitude;
+    const manualPickupLng = payload.pickupLng || payload.pickup_longitude;
+    const manualDropLat   = payload.dropLat   || payload.drop_latitude;
+    const manualDropLng   = payload.dropLng   || payload.drop_longitude;
+
     const lat = Number(receivedLat);
     const lng = Number(receivedLng);
 
@@ -98,56 +104,84 @@ Deno.serve(async (req) => {
 
     // Only recalculate if trip is active and cooldown has passed.
     // Includes all mobile app driving states: on_route, reached_pickup, arrived_destination
+    // 3. FETCH/GEOCODE BASELINE COORDINATES (Required for Progress Calc)
+    // Priority: Manual Payload > Existing DB > Geocoding
+    let destLat = manualDropLat || trip.drop_latitude;
+    let destLng = manualDropLng || trip.drop_longitude;
+    if (!destLat || !destLng) {
+      try {
+        const q = await geocodeAddress(trip.destination, googleApiKey);
+        destLat = q.lat;
+        destLng = q.lng;
+        // background save only if not already attempting a manual fix
+        if (!manualDropLat) {
+          supabase.from('trips').update({ drop_latitude: destLat, drop_longitude: destLng }).eq('id', tripId).then();
+        }
+      } catch (err) { console.warn(`[driver-location-update] Geocode dst failed`); }
+    }
+
+    let pickupLat = manualPickupLat || trip.pickup_latitude;
+    let pickupLng = manualPickupLng || trip.pickup_longitude;
+    if (!pickupLat || !pickupLng) {
+      try {
+        const q = await geocodeAddress(trip.origin, googleApiKey);
+        pickupLat = q.lat;
+        pickupLng = q.lng;
+        // Safety check: don't save origin if it's identical to destination (avoid geocode loops/poisoning)
+        if (!manualPickupLat && (pickupLat !== destLat)) {
+          supabase.from('trips').update({ pickup_latitude: pickupLat, pickup_longitude: pickupLng }).eq('id', tripId).then();
+        }
+      } catch (err) { console.warn(`[driver-location-update] Geocode org failed`); }
+    }
+
+    // Apply manual overrides to DB immediately if provided
+    if (manualPickupLat || manualDropLat) {
+      const updateObj: any = {};
+      if (manualPickupLat) { updateObj.pickup_latitude = manualPickupLat; updateObj.pickup_longitude = manualPickupLng; }
+      if (manualDropLat)   { updateObj.drop_latitude   = manualDropLat;   updateObj.drop_longitude   = manualDropLng; }
+      await supabase.from('trips').update(updateObj).eq('id', tripId);
+    }
+
+    // 4. CALCULATE REAL-TIME PROGRESS (Birds-Eye / Haversine)
+    let progress = trip.route_progress_percent;
+    if (pickupLat && pickupLng && destLat && destLng) {
+      progress = computeStraightLineProgress(pickupLat, pickupLng, lat, lng, destLat, destLng);
+    }
+
+    // 5. UPDATE LOCATION & PROGRESS (Non-throttled)
+    const { error: liveDataError } = await supabase
+      .from('trips')
+      .update({
+        last_latitude: lat,
+        last_longitude: lng,
+        last_update_at: nowIso,
+        last_driver_latitude: lat,
+        last_driver_longitude: lng,
+        last_driver_location_at: nowIso,
+        last_location_received_at: nowIso, // Critical: matched by eta-updater filter
+        route_progress_percent: typeof progress === 'number' ? progress.toFixed(2) : progress,
+        is_live_tracking: true,
+        is_location_live: true,
+        is_active: true
+      })
+      .eq('id', tripId);
+
+    // 6. THROTTLE: Only proceed to Google Routes API for ETA every 2 minutes
     const activeStatuses = ['on_time', 'at_risk', 'late', 'active', 'validated', 'reached_pickup', 'on_route', 'arrived_destination'];
     if (!activeStatuses.includes(trip.status) || timeSinceLastCalc < cooldownMs) {
-      console.log(`[driver-location-update] Throttling ETA for trip ${tripId}. Time since last calc: ${Math.round(timeSinceLastCalc/1000)}s`);
+      console.log(`[driver-location-update] Throttling ETA for trip ${tripId}. Progress updated to ${progress?.toFixed?.(2)}%`);
       return new Response(JSON.stringify({ 
         ok: true, 
-        updated: 'location_only',
+        updated: 'location_and_progress',
+        progress: typeof progress === 'number' ? progress.toFixed(2) : progress,
         nextEtaRefreshSec: Math.max(0, Math.ceil((cooldownMs - timeSinceLastCalc) / 1000))
       }), {
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
     }
 
-    // 4. RECALCULATION: Call Google Routes API
-    console.log(`[driver-location-update] Refreshing metrics for trip ${tripId}`);
-    
-    // Safety check: ensure baseline exists
-    if (!trip.drop_latitude || !trip.drop_longitude) {
-      console.warn(`[driver-location-update] Trip ${tripId} missing drop coordinates. Cannot compute live metrics.`);
-      return new Response(JSON.stringify({ ok: true, warning: 'Baseline missing' }), { headers: CORS_HEADERS });
-    }
-
-    let destLat = trip.drop_latitude;
-    let destLng = trip.drop_longitude;
-
-    if (!destLat || !destLng) {
-      try {
-        const q = await geocodeAddress(trip.destination, googleApiKey);
-        destLat = q.lat;
-        destLng = q.lng;
-        // background save
-        supabase.from('trips').update({ drop_latitude: destLat, drop_longitude: destLng }).eq('id', tripId).then();
-      } catch (err) {
-        console.warn(`[driver-location-update] Geocode dst failed`);
-      }
-    }
-
-    let pickupLat = trip.pickup_latitude;
-    let pickupLng = trip.pickup_longitude;
-
-    if (!pickupLat || !pickupLng) {
-      try {
-        const q = await geocodeAddress(trip.origin, googleApiKey);
-        pickupLat = q.lat;
-        pickupLng = q.lng;
-        // background save
-        supabase.from('trips').update({ pickup_latitude: pickupLat, pickup_longitude: pickupLng }).eq('id', tripId).then();
-      } catch (err) {
-        console.warn(`[driver-location-update] Geocode org failed`);
-      }
-    }
+    // 7. RECALCULATION: Call Google Routes API for Detailed ETA/Distance
+    console.log(`[driver-location-update] Refreshing Full metrics for trip ${tripId}`);
 
     try {
       const liveRoute = await computeRoute(
@@ -157,8 +191,13 @@ Deno.serve(async (req) => {
       );
 
       // Calculation of Route Progress
-      const baselineDist = trip.route_distance_meters || liveRoute.distanceMeters;
+      // FIX: Ensure baseline is always Pickup -> Destination, never Current -> Destination
+      let baselineDist = trip.route_distance_meters;
       const remainingDist = liveRoute.distanceMeters;
+
+      if (!baselineDist && pickupLat && pickupLng && destLat && destLng) {
+        baselineDist = haversineDistance(pickupLat, pickupLng, destLat, destLng);
+      }
       
       let progress = 0;
       
@@ -169,11 +208,13 @@ Deno.serve(async (req) => {
           lat, lng,
           destLat, destLng
         );
+        console.log(`[driver-location-update] Progress Calc (Birds-Eye): ${progress.toFixed(2)}% | Origin: ${pickupLat},${pickupLng} | Current: ${lat},${lng} | Dest: ${destLat},${destLng}`);
       } else {
         // Fallback to Driving Distance progress if explicit geo-coordinates are missing
         if (baselineDist && baselineDist > 0) {
           progress = ((baselineDist - remainingDist) / baselineDist) * 100;
-          progress = Math.max(0, Math.min(100, progress)); // Clamp between 0-100
+          progress = Math.max(0, Math.min(100, progress));
+          console.log(`[driver-location-update] Progress Calc (Driving): ${progress.toFixed(2)}% | Baseline: ${baselineDist} | Remaining: ${remainingDist}`);
         }
       }
 
@@ -217,7 +258,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ 
         ok: true, 
         updated: 'all_metrics',
-        progress: progress.toFixed(2),
+        progress: typeof progress === 'number' ? progress.toFixed(2) : progress,
         eta: predictedEtaAt,
         lat,
         lng

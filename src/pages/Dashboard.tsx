@@ -216,6 +216,7 @@ export default function Dashboard() {
               <CreditCard className="w-4 h-4 mr-2" />
               Billing
             </Button>
+
             <Button variant="ghost" size="icon" onClick={() => navigate('/profile')}>
               <UserCircle2 className="w-4 h-4" />
             </Button>

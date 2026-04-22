@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { MessageCircle, X, ChevronDown, ChevronRight, Send, Phone, Mail, ExternalLink, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { APP_METADATA } from '@/lib/constants';
 
-const WHATSAPP_NUMBER = '917977704755'; // India country code + support number
-const SUPPORT_EMAIL = 'support.safarlink@gmail.com';
+const WHATSAPP_NUMBER = APP_METADATA.driver.supportWhatsapp;
+const SUPPORT_EMAIL = APP_METADATA.driver.supportEmail;
 
 const faqs = [
   {
@@ -187,7 +188,7 @@ export default function SupportWidget() {
                 <p className="text-xs text-slate-400 font-semibold mb-2 uppercase tracking-widest">Quick links</p>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { label: 'Download Driver APK', href: 'https://kywkauwkuhfdhwycikxg.supabase.co/storage/v1/object/public/SAFARLINK%20DRIVER/application-cd1c85f4-ddd2-481f-90a2-0ab53ea18576.apk', download: true },
+                    { label: 'Download Driver APK', href: APP_METADATA.driver.apkUrl, download: true },
                     { label: 'Login', href: '/login' },
                     { label: 'Sign Up', href: '/signup' },
                   ].map(link => (

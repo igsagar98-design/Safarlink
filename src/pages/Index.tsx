@@ -2,12 +2,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import AppLogo from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
-import {
-  Truck, Link2, MapPinned, ClipboardList, Radar,
-  Building2, Users, PackageCheck, Smartphone, Download,
-  CheckCircle2, Star, Navigation, Bell, Shield, Wifi,
-  Play, ArrowRight, Globe
-} from 'lucide-react';
+import { Globe, Smartphone, Download, CheckCircle2, Star, Navigation, Bell, Shield, Wifi, Play, ArrowRight, MapPinned, Radar, ClipboardList, Link2, Building2, Users, PackageCheck, Truck } from 'lucide-react';
+import { APP_METADATA } from '@/lib/constants';
 
 export default function Index() {
   const { user, accountType, loading } = useAuth();
@@ -190,7 +186,7 @@ export default function Index() {
 
                 <div className="flex flex-wrap gap-3">
                   <a
-                    href="https://kywkauwkuhfdhwycikxg.supabase.co/storage/v1/object/public/SAFARLINK%20DRIVER/application-cd1c85f4-ddd2-481f-90a2-0ab53ea18576.apk"
+                    href={APP_METADATA.driver.apkUrl}
                     download
                     id="download-apk-btn"
                     className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-3 shadow-lg shadow-emerald-200 transition-all duration-200 hover:scale-[1.02] text-sm"
@@ -363,7 +359,7 @@ export default function Index() {
                   <Link to="/signup">Start Free <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
                 <a
-                  href="https://kywkauwkuhfdhwycikxg.supabase.co/storage/v1/object/public/SAFARLINK%20DRIVER/application-cd1c85f4-ddd2-481f-90a2-0ab53ea18576.apk"
+                  href={APP_METADATA.driver.apkUrl}
                   download
                   className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold px-8 h-12 text-base transition-all duration-200"
                 >

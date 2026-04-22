@@ -3,14 +3,15 @@ import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { Smartphone, Download, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { APP_METADATA } from '@/lib/constants';
 
 export default function DriverLinkRouter() {
   const { token } = useParams<{ token: string }>();
   const [deviceType, setDeviceType] = useState<'desktop' | 'mobile' | 'unknown'>('unknown');
   const [redirected, setRedirected] = useState(false);
 
-  const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.safarlink.driverapk';
-  const DEEP_LINK_URL = `safarlink://driver/validate?token=${token}`;
+  const PLAY_STORE_URL = APP_METADATA.driver.playStoreUrl;
+  const DEEP_LINK_URL = `${APP_METADATA.driver.deepLinkScheme}?token=${token}`;
 
   useEffect(() => {
     // Detect device type
